@@ -1,0 +1,95 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-serif: "Space Grotesk", sans-serif;
+}
+
+:root {
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --ink: #0f172a;
+  --ink-soft: #475569;
+  --ink-faint: #64748b;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+  --accent: #2563eb;
+  --accent-dark: #1d4ed8;
+  --accent-soft: #dbeafe;
+  --math: #2563eb;
+  --math-soft: #dbeafe;
+  --science: #ea580c;
+  --science-soft: #ffedd5;
+  --english: #7c3aed;
+  --english-soft: #f3e8ff;
+  --quran: #059669;
+  --quran-soft: #d1fae5;
+  --other: #475569;
+  --other-soft: #f1f5f9;
+  --warn: #dc2626;
+  --warn-soft: #fee2e2;
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: "Inter", sans-serif;
+}
+
+/* Custom styles for application */
+.serif-title {
+  font-family: "Space Grotesk", sans-serif;
+}
+
+/* Print Overrides */
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+  }
+  
+  /* Hide UI elements, navigation tabs, and filters during print */
+  .no-print, 
+  nav.tabs, 
+  .toolbar, 
+  .section-sub, 
+  fieldset,
+  button, 
+  input, 
+  select, 
+  textarea,
+  aside,
+  header {
+    display: none !important;
+  }
+
+  main {
+    border: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+
+  /* Specific directive for Monthly Report print: 
+     "On the report show the text after the monthly report and remove the stuff before it like lesson register and text below it"
+     This hides the main header / masthead during general printing of the monthly report */
+  .masthead {
+    display: none !important;
+  }
+  
+  /* Ensure proper spacing and borders when printed */
+  .table-wrap {
+    border: 1px solid #0f172a !important;
+    border-radius: 0 !important;
+  }
+  
+  th, td {
+    border-bottom: 1px solid #0f172a !important;
+    color: #0f172a !important;
+  }
+}
+
