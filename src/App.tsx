@@ -10,7 +10,7 @@ import PeopleView from './components/PeopleView';
 import AdjustmentsView from './components/AdjustmentsView';
 import { BookOpen, Calendar, Clock, Clipboard, Users, GraduationCap, Menu, X, Lock, Unlock, Settings, Key, CalendarClock } from 'lucide-react';
 
-const LOCKED_TABS = ['timetable', 'people'];
+const LOCKED_TABS = ['timetable', 'people', 'adjustments'];
 
 const SCHOOL_DAY_CUTOFF_HOUR = 6;
 
