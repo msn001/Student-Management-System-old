@@ -68,7 +68,7 @@ export default function MonthlyReportView({
   };
 
   // Compile report stats and logs
-  const getReportData = () => {
+  const getReportData = (filterSubject?: string) => {
     if (!selectedStudentId || !selectedMonth) return null;
 
     const parts = selectedMonth.split('-').map(Number);
@@ -76,7 +76,10 @@ export default function MonthlyReportView({
     const monthIndex = parts[1] - 1; // 0-indexed
 
     const monthLog = logsByMonth[selectedMonth] || {};
-    const studentSlots = slots.filter((s) => s.studentId === selectedStudentId);
+    let studentSlots = slots.filter((s) => s.studentId === selectedStudentId);
+    if (filterSubject) {
+      studentSlots = studentSlots.filter((s) => s.subject === filterSubject);
+    }
     const totalDays = getDaysInMonth(year, monthIndex);
 
     const dayMap: Record<string, any[]> = {};
@@ -139,133 +142,90 @@ export default function MonthlyReportView({
     };
   };
 
-  const reportData = getReportData();
   const student = students.find((s) => s.id === selectedStudentId);
+  const studentSlots = selectedStudentId ? slots.filter((s) => s.studentId === selectedStudentId) : [];
+  const uniqueSubjects = Array.from(new Set(studentSlots.map((s) => s.subject))).sort();
+  const shouldSplitSubjects = uniqueSubjects.length > 2;
+  const subjectsToRender = shouldSplitSubjects ? uniqueSubjects : [undefined];
+
+  const hasAnyClasses = studentSlots.length > 0;
 
   const handlePrint = () => {
     window.print();
   };
 
   const handleCopySummary = async () => {
-    if (!reportData || !student) return;
-
-    const monthName = new Date(reportData.year, reportData.monthIndex, 1).toLocaleDateString(undefined, {
-      month: 'long',
-      year: 'numeric',
-    });
-    const pct = reportData.totals.scheduled
-      ? Math.round((100 * reportData.totals.present) / reportData.totals.scheduled)
-      : 0;
+    if (!student) return;
 
     const lines: string[] = [];
-    lines.push(`${getFirstName(student.name)} — ${monthName} Lesson Report`);
-    lines.push(
-      `Scheduled: ${reportData.totals.scheduled}  |  Present: ${reportData.totals.present}  |  Absent: ${reportData.totals.absent}  |  On Leave: ${reportData.totals.leave}  |  Completion: ${pct}%`
-    );
-    lines.push('');
-    
-    Object.keys(reportData.subjectStats)
-      .sort()
-      .forEach((subj) => {
-        const st = reportData.subjectStats[subj];
-        lines.push(`${subj}: ${st.present}/${st.scheduled} taken (${st.absent} absent, ${st.leave} leave)`);
+
+    subjectsToRender.forEach((subj) => {
+      const data = getReportData(subj);
+      if (!data || !data.hasClasses) return;
+
+      const monthName = new Date(data.year, data.monthIndex, 1).toLocaleDateString(undefined, {
+        month: 'long',
+        year: 'numeric',
       });
+      const pct = data.totals.scheduled
+        ? Math.round((100 * data.totals.present) / data.totals.scheduled)
+        : 0;
 
-    lines.push('');
-    lines.push('Day-by-day:');
+      lines.push(`${getFirstName(student.name)} — ${monthName} Lesson Report${subj ? ` (${subj})` : ''}`);
+      lines.push(
+        `Scheduled: ${data.totals.scheduled}  |  Present: ${data.totals.present}  |  Absent: ${data.totals.absent}  |  On Leave: ${data.totals.leave}  |  Completion: ${pct}%`
+      );
+      lines.push('');
+      
+      Object.keys(data.subjectStats)
+        .sort()
+        .forEach((subjName) => {
+          const st = data.subjectStats[subjName];
+          lines.push(`${subjName}: ${st.present}/${st.scheduled} taken (${st.absent} absent, ${st.leave} leave)`);
+        });
 
-    for (let d = 1; d <= reportData.totalDays; d++) {
-      const dateStr = `${reportData.year}-${String(reportData.monthIndex + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const classes = reportData.dayMap[dateStr];
-      if (!classes || classes.length === 0) continue;
+      lines.push('');
+      lines.push('Day-by-day:');
 
-      const dateObj = new Date(reportData.year, reportData.monthIndex, d);
-      classes.forEach((c) => {
-        const statusLabel =
-          c.status === 'present'
-            ? 'Present'
-            : c.status === 'absent'
-            ? 'Absent'
-            : c.status === 'leave'
-            ? 'On Leave'
-            : 'Not logged';
+      for (let d = 1; d <= data.totalDays; d++) {
+        const dateStr = `${data.year}-${String(data.monthIndex + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const classes = data.dayMap[dateStr];
+        if (!classes || classes.length === 0) continue;
 
-        const lessonBit = c.lessonSource
-          ? ` [${c.lessonSource}${c.lessonDetail ? `: ${c.lessonDetail}` : ''}]`
-          : '';
+        const dateObj = new Date(data.year, data.monthIndex, d);
+        classes.forEach((c) => {
+          const statusLabel =
+            c.status === 'present'
+              ? 'Present'
+              : c.status === 'absent'
+              ? 'Absent'
+              : c.status === 'leave'
+              ? 'On Leave'
+              : 'Not logged';
 
-        // NOTE: No teacher name, no schedule times in copy summary text!
-        lines.push(
-          `- ${formatDateNice(dateObj)} [${c.subject}, ${statusLabel}]${lessonBit}${
-            c.content ? `: ${c.content}` : ''
-          }`
-        );
-      });
-    }
+          const lessonBit = c.lessonSource
+            ? ` [${c.lessonSource}${c.lessonDetail ? `: ${c.lessonDetail}` : ''}]`
+            : '';
+
+          lines.push(
+            `- ${formatDateNice(dateObj)} [${c.subject}, ${statusLabel}]${lessonBit}${
+              c.content ? `: ${c.content}` : ''
+            }`
+          );
+        });
+      }
+
+      lines.push('\n----------------------------------------\n');
+    });
 
     const text = lines.join('\n');
     try {
       await navigator.clipboard.writeText(text);
-      alert('Report summary copied to clipboard! You can now paste it into WhatsApp, emails, or messages.');
+      alert('Report summary copied to clipboard! You can now paste it into WhatsApp, messages, or emails.');
     } catch {
       window.prompt('Copy this summary:', text);
     }
   };
-
-  const monthName = reportData
-    ? new Date(reportData.year, reportData.monthIndex, 1).toLocaleDateString(undefined, {
-        month: 'long',
-        year: 'numeric',
-      })
-    : '';
-
-  const pct = reportData?.totals.scheduled
-    ? Math.round((100 * reportData.totals.present) / reportData.totals.scheduled)
-    : 0;
-
-  // Render Day-by-Day Rows
-  const dayRows: React.ReactNode[] = [];
-  if (reportData) {
-    for (let d = 1; d <= reportData.totalDays; d++) {
-      const dateStr = `${reportData.year}-${String(reportData.monthIndex + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const classes = reportData.dayMap[dateStr];
-      if (!classes || classes.length === 0) continue;
-
-      const dateObj = new Date(reportData.year, reportData.monthIndex, d);
-      classes.forEach((c, idx) => {
-        const lessonBits: string[] = [];
-        if (c.lessonSource) {
-          lessonBits.push(`${c.lessonSource}${c.lessonDetail ? ` — ${c.lessonDetail}` : ''}`);
-        } else if (c.lessonDetail) {
-          lessonBits.push(c.lessonDetail);
-        }
-        if (c.content) {
-          lessonBits.push(c.content);
-        }
-        const lessonText = lessonBits.length ? lessonBits.join('\n') : '—';
-        const durationText =
-          c.actualDuration !== null && c.actualDuration !== undefined
-            ? `${c.actualDuration} min`
-            : `${c.scheduledDuration} min (scheduled)`;
-
-        dayRows.push(
-          <tr key={`${dateStr}-${idx}`} className="hover:bg-slate-50/50">
-            <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{formatDateNice(dateObj)}</td>
-            {/* NOTE: Strictly showing ONLY the subject. NO teacher name, NO scheduled time is printed or displayed! */}
-            <td className="px-4 py-3 whitespace-nowrap">
-              <span className={`inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full ${getSubjectClass(c.subject)}`}>
-                {c.subject}
-              </span>
-            </td>
-            <td className="px-4 py-3 whitespace-nowrap">{getStatusTag(c.status)}</td>
-            <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600">{durationText}</td>
-            <td className="px-4 py-3 text-sm text-slate-700 whitespace-pre-wrap max-w-xs">{lessonText}</td>
-            <td className="px-4 py-3 text-sm text-slate-500 whitespace-pre-wrap max-w-xs">{c.remarks || '—'}</td>
-          </tr>
-        );
-      });
-    }
-  }
 
   return (
     <div>
@@ -294,17 +254,17 @@ export default function MonthlyReportView({
           onChange={(e) => setSelectedMonth(e.target.value)}
         />
 
-        {reportData && reportData.hasClasses && (
+        {selectedStudentId && hasAnyClasses && (
           <>
             <button
               onClick={handlePrint}
-              className="px-4 py-1.5 bg-white border border-[var(--line-strong)] hover:border-[var(--ink-soft)] font-semibold rounded text-sm flex items-center gap-1.5 cursor-pointer text-slate-700 shadow-sm"
+              className="px-4 py-1.5 bg-white border border-[var(--line-strong)] hover:border-[var(--ink-soft)] font-semibold rounded text-sm flex items-center gap-1.5 cursor-pointer text-slate-700 shadow-sm print:hidden no-print"
             >
               <Printer size={16} /> Print / Save PDF
             </button>
             <button
               onClick={handleCopySummary}
-              className="px-4 py-1.5 bg-white border border-[var(--line-strong)] hover:border-[var(--ink-soft)] font-semibold rounded text-sm flex items-center gap-1.5 cursor-pointer text-slate-700 shadow-sm"
+              className="px-4 py-1.5 bg-white border border-[var(--line-strong)] hover:border-[var(--ink-soft)] font-semibold rounded text-sm flex items-center gap-1.5 cursor-pointer text-slate-700 shadow-sm print:hidden no-print"
             >
               <Clipboard size={16} /> Copy shareable summary
             </button>
@@ -317,117 +277,178 @@ export default function MonthlyReportView({
         <div className="text-center py-12 border-2 border-dashed border-[var(--line-strong)] rounded-xl text-slate-400">
           Pick a student above to generate their monthly report.
         </div>
-      ) : reportData && !reportData.hasClasses ? (
+      ) : !hasAnyClasses ? (
         <div className="text-center py-12 border-2 border-dashed border-[var(--line-strong)] rounded-xl text-slate-400">
           This student has no classes in the weekly timetable. Set up classes under the Timetable tab first.
         </div>
-      ) : reportData ? (
-        <div className="space-y-6 pt-4 bg-white rounded-xl border border-slate-200 p-6 md:p-8">
-          {/* Main heading - clean, with no other layout elements or headers above it */}
-          <div className="border-b pb-4 mb-2">
-            <h2 className="serif-title font-bold text-2xl text-[var(--ink)]">{getFirstName(student?.name || '')}</h2>
-            <p className="text-sm font-semibold text-[var(--ink-soft)] mt-1">
-              Monthly Lesson Report &middot; {monthName}
-            </p>
-          </div>
+      ) : (
+        <div className="space-y-8 print:space-y-0">
+          {subjectsToRender.map((subj) => {
+            const reportData = getReportData(subj);
+            if (!reportData || !reportData.hasClasses) return null;
 
-          {/* Core Stats Row */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 text-center">
-              <div className="serif-title font-bold text-2xl text-[var(--ink)]">{reportData.totals.scheduled}</div>
-              <div className="text-[10px] font-bold text-[var(--ink-faint)] uppercase tracking-wider mt-1">Scheduled</div>
-            </div>
-            <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 text-center">
-              <div className="serif-title font-bold text-2xl text-[var(--quran)]">{reportData.totals.present}</div>
-              <div className="text-[10px] font-bold text-[var(--ink-faint)] uppercase tracking-wider mt-1">Present</div>
-            </div>
-            <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 text-center">
-              <div className="serif-title font-bold text-2xl text-[var(--warn)]">{reportData.totals.absent}</div>
-              <div className="text-[10px] font-bold text-[var(--ink-faint)] uppercase tracking-wider mt-1">Absent</div>
-            </div>
-            <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 text-center">
-              <div className="serif-title font-bold text-2xl text-[var(--science)]">{reportData.totals.leave}</div>
-              <div className="text-[10px] font-bold text-[var(--ink-faint)] uppercase tracking-wider mt-1">On Leave</div>
-            </div>
-            <div className="bg-[var(--accent-soft)] p-4 rounded-lg border border-[var(--accent)] col-span-2 md:col-span-1 text-center">
-              <div className="serif-title font-bold text-2xl text-[var(--accent-dark)]">{pct}%</div>
-              <div className="text-[10px] font-bold text-[var(--accent-dark)] uppercase tracking-wider mt-1">Completion</div>
-            </div>
-          </div>
+            const monthName = new Date(reportData.year, reportData.monthIndex, 1).toLocaleDateString(undefined, {
+              month: 'long',
+              year: 'numeric',
+            });
+            const pct = reportData.totals.scheduled
+              ? Math.round((100 * reportData.totals.present) / reportData.totals.scheduled)
+              : 0;
 
-          {/* Completion Bar */}
-          <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-            <div className="h-full bg-[var(--accent)] rounded-full" style={{ width: `${pct}%` }}></div>
-          </div>
+            const dayRows: React.ReactNode[] = [];
+            for (let d = 1; d <= reportData.totalDays; d++) {
+              const dateStr = `${reportData.year}-${String(reportData.monthIndex + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+              const classes = reportData.dayMap[dateStr];
+              if (!classes || classes.length === 0) continue;
 
-          {/* Subject Breakdown */}
-          <div className="space-y-3">
-            <h3 className="serif-title font-bold text-base text-[var(--ink)]">Subject Breakdown</h3>
-            <div className="overflow-x-auto border border-slate-200 rounded-lg">
-              <table className="min-w-full divide-y divide-slate-200 text-xs sm:text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Subject</th>
-                    <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Scheduled</th>
-                    <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Present</th>
-                    <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Absent</th>
-                    <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">On Leave</th>
-                    <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Completion</th>
+              const dateObj = new Date(reportData.year, reportData.monthIndex, d);
+              classes.forEach((c, idx) => {
+                const lessonBits: string[] = [];
+                if (c.lessonSource) {
+                  lessonBits.push(`${c.lessonSource}${c.lessonDetail ? ` — ${c.lessonDetail}` : ''}`);
+                } else if (c.lessonDetail) {
+                  lessonBits.push(c.lessonDetail);
+                }
+                if (c.content) {
+                  lessonBits.push(c.content);
+                }
+                const lessonText = lessonBits.length ? lessonBits.join('\n') : '—';
+                const durationText =
+                  c.actualDuration !== null && c.actualDuration !== undefined
+                    ? `${c.actualDuration} min`
+                    : `${c.scheduledDuration} min (scheduled)`;
+
+                dayRows.push(
+                  <tr key={`${dateStr}-${idx}`} className="hover:bg-slate-50/50">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{formatDateNice(dateObj)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full ${getSubjectClass(c.subject)}`}>
+                        {c.subject}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">{getStatusTag(c.status)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600">{durationText}</td>
+                    <td className="px-4 py-3 text-sm text-slate-700 whitespace-pre-wrap max-w-xs">{lessonText}</td>
+                    <td className="px-4 py-3 text-sm text-slate-500 whitespace-pre-wrap max-w-xs">{c.remarks || '—'}</td>
                   </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-slate-100">
-                  {Object.keys(reportData.subjectStats)
-                    .sort()
-                    .map((subj) => {
-                      const st = reportData.subjectStats[subj];
-                      const sPct = st.scheduled ? Math.round((100 * st.present) / st.scheduled) : 0;
-                      return (
-                        <tr key={subj}>
-                          <td className="px-4 py-2 font-semibold">
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${getSubjectClass(subj)}`}>
-                              {subj}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2 text-slate-600">{st.scheduled}</td>
-                          <td className="px-4 py-2 text-slate-600">{st.present}</td>
-                          <td className="px-4 py-2 text-slate-600">{st.absent}</td>
-                          <td className="px-4 py-2 text-slate-600">{st.leave}</td>
-                          <td className="px-4 py-2 font-bold text-slate-800">{sPct}%</td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                );
+              });
+            }
 
-          {/* Day by Day logs */}
-          <div className="space-y-3">
-            <h3 className="serif-title font-bold text-base text-[var(--ink)]">Daily Lesson History</h3>
-            {dayRows.length === 0 ? (
-              <div className="text-center py-6 border border-dashed rounded-lg text-slate-400 text-sm">
-                No lessons logged for this month yet. Use the Daily Log tab to record entries.
+            return (
+              <div 
+                key={subj || 'all'} 
+                className="space-y-6 pt-4 bg-white rounded-xl border border-slate-200 p-6 md:p-8 print:border-none print:p-0 print-page-break"
+              >
+                {/* Main heading - clean, with no other layout elements or headers above it */}
+                <div className="border-b pb-4 mb-2">
+                  <h2 className="serif-title font-bold text-2xl text-[var(--ink)]">{getFirstName(student?.name || '')}</h2>
+                  <p className="text-sm font-semibold text-[var(--ink-soft)] mt-1">
+                    Monthly Lesson Report &middot; {monthName}{subj ? ` &middot; ${subj}` : ''}
+                  </p>
+                </div>
+
+                {/* Core Stats Row */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 text-center">
+                    <div className="serif-title font-bold text-2xl text-[var(--ink)]">{reportData.totals.scheduled}</div>
+                    <div className="text-[10px] font-bold text-[var(--ink-faint)] uppercase tracking-wider mt-1">Scheduled</div>
+                  </div>
+                  <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 text-center">
+                    <div className="serif-title font-bold text-2xl text-[var(--quran)]">{reportData.totals.present}</div>
+                    <div className="text-[10px] font-bold text-[var(--ink-faint)] uppercase tracking-wider mt-1">Present</div>
+                  </div>
+                  <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 text-center">
+                    <div className="serif-title font-bold text-2xl text-[var(--warn)]">{reportData.totals.absent}</div>
+                    <div className="text-[10px] font-bold text-[var(--ink-faint)] uppercase tracking-wider mt-1">Absent</div>
+                  </div>
+                  <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 text-center">
+                    <div className="serif-title font-bold text-2xl text-[var(--science)]">{reportData.totals.leave}</div>
+                    <div className="text-[10px] font-bold text-[var(--ink-faint)] uppercase tracking-wider mt-1">On Leave</div>
+                  </div>
+                  <div className="bg-[var(--accent-soft)] p-4 rounded-lg border border-[var(--accent)] col-span-2 md:col-span-1 text-center">
+                    <div className="serif-title font-bold text-2xl text-[var(--accent-dark)]">{pct}%</div>
+                    <div className="text-[10px] font-bold text-[var(--accent-dark)] uppercase tracking-wider mt-1">Completion</div>
+                  </div>
+                </div>
+
+                {/* Completion Bar */}
+                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-[var(--accent)] rounded-full" style={{ width: `${pct}%` }}></div>
+                </div>
+
+                {/* Subject Breakdown */}
+                <div className="space-y-3">
+                  <h3 className="serif-title font-bold text-base text-[var(--ink)]">Subject Breakdown</h3>
+                  <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                    <table className="min-w-full divide-y divide-slate-200 text-xs sm:text-sm">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Subject</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Scheduled</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Present</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Absent</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">On Leave</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Completion</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-slate-100">
+                        {Object.keys(reportData.subjectStats)
+                          .sort()
+                          .map((subjName) => {
+                            const st = reportData.subjectStats[subjName];
+                            const sPct = st.scheduled ? Math.round((100 * st.present) / st.scheduled) : 0;
+                            return (
+                              <tr key={subjName}>
+                                <td className="px-4 py-2 font-semibold">
+                                  <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${getSubjectClass(subjName)}`}>
+                                    {subjName}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2 text-slate-600">{st.scheduled}</td>
+                                <td className="px-4 py-2 text-slate-600">{st.present}</td>
+                                <td className="px-4 py-2 text-slate-600">{st.absent}</td>
+                                <td className="px-4 py-2 text-slate-600">{st.leave}</td>
+                                <td className="px-4 py-2 font-bold text-slate-800">{sPct}%</td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Day by Day logs */}
+                <div className="space-y-3">
+                  <h3 className="serif-title font-bold text-base text-[var(--ink)]">Daily Lesson History</h3>
+                  {dayRows.length === 0 ? (
+                    <div className="text-center py-6 border border-dashed rounded-lg text-slate-400 text-sm">
+                      No lessons logged for this month yet. Use the Daily Log tab to record entries.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                      <table className="min-w-full divide-y divide-slate-200 text-xs sm:text-sm">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Date</th>
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Subject</th>
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Attendance</th>
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Duration</th>
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Lesson / Note</th>
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Remarks / Homework</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-slate-100">{dayRows}</tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               </div>
-            ) : (
-              <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                <table className="min-w-full divide-y divide-slate-200 text-xs sm:text-sm">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Date</th>
-                      <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Subject</th>
-                      <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Attendance</th>
-                      <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Duration</th>
-                      <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Lesson / Note</th>
-                      <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Remarks / Homework</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-slate-100">{dayRows}</tbody>
-                </table>
-              </div>
-            )}
-          </div>
+            );
+          })}
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
+

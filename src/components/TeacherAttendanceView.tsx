@@ -241,7 +241,7 @@ export default function TeacherAttendanceView() {
   return (
     <div className="space-y-6">
       {/* Tab Selector */}
-      <div className="flex border-b border-slate-200">
+      <div className="flex border-b border-slate-200 no-print print:hidden">
         <button
           onClick={() => setActiveSubTab('live')}
           className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
@@ -439,7 +439,7 @@ export default function TeacherAttendanceView() {
         // Read-only Report View
         <div className="space-y-6">
           {/* Controls Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-slate-100 rounded-xl border border-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-slate-100 rounded-xl border border-slate-200 no-print print:hidden">
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
                 <label className="text-xs font-bold text-slate-600 uppercase">Teacher:</label>
