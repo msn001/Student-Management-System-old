@@ -498,7 +498,30 @@ export default function TimetableView({ slots, students, teachers, onUpdateSlots
                     {formatTimeToAMPM(slot.time)}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-slate-900">
-                    {studentName}
+                    <div>{studentName}</div>
+                    {(() => {
+                      const studentObj = students.find((s) => s.id === slot.studentId);
+                      if (!studentObj) return null;
+                      return (
+                        <div className="flex gap-1.5 mt-0.5">
+                          {studentObj.zoom && (
+                            <span className="inline-block text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded border border-blue-100 font-mono" title={`Zoom: ${studentObj.zoom}`}>
+                              Zoom: {studentObj.zoom}
+                            </span>
+                          )}
+                          {studentObj.teamsId && (
+                            <span className="inline-block text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.2 rounded border border-indigo-100 font-mono" title={`Teams: ${studentObj.teamsId}`}>
+                              Teams: {studentObj.teamsId}
+                            </span>
+                          )}
+                          {studentObj.googleMeet && (
+                            <span className="inline-block text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded border border-emerald-100 font-mono" title={`Meet: ${studentObj.googleMeet}`}>
+                              Meet: {studentObj.googleMeet}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className={`inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full ${getSubjectClass(slot.subject)}`}>

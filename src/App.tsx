@@ -574,7 +574,6 @@ export default function App() {
                 autoFocus
               />
               {pinError && <p className="text-xs font-semibold text-red-500">{pinError}</p>}
-              <p className="text-[10px] text-slate-400">Default PIN: <strong className="font-mono">1234</strong></p>
             </div>
             
             <div className="flex gap-2 pt-1">
