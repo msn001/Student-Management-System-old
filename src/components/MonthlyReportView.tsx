@@ -25,6 +25,7 @@ export default function MonthlyReportView({
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
+  const [subjectFilterMode, setSubjectFilterMode] = useState('separate');
 
   const getDaysInMonth = (year: number, monthIndex: number) => {
     return new Date(year, monthIndex + 1, 0).getDate();
@@ -145,10 +146,24 @@ export default function MonthlyReportView({
   const student = students.find((s) => s.id === selectedStudentId);
   const studentSlots = selectedStudentId ? slots.filter((s) => s.studentId === selectedStudentId) : [];
   const uniqueSubjects = Array.from(new Set(studentSlots.map((s) => s.subject))).sort();
-  const shouldSplitSubjects = uniqueSubjects.length > 2;
-  const subjectsToRender = shouldSplitSubjects ? uniqueSubjects : [undefined];
-
+  
   const hasAnyClasses = studentSlots.length > 0;
+
+  // Fallback if the selected subject filter doesn't exist for this student
+  const activeSubjectFilter = (subjectFilterMode !== 'separate' && subjectFilterMode !== 'combined' && !uniqueSubjects.includes(subjectFilterMode))
+    ? 'separate'
+    : subjectFilterMode;
+
+  let subjectsToRender: (string | undefined)[] = [undefined];
+  if (selectedStudentId && hasAnyClasses) {
+    if (activeSubjectFilter === 'separate') {
+      subjectsToRender = uniqueSubjects.length > 0 ? uniqueSubjects : [undefined];
+    } else if (activeSubjectFilter === 'combined') {
+      subjectsToRender = [undefined];
+    } else {
+      subjectsToRender = [activeSubjectFilter];
+    }
+  }
 
   const handlePrint = () => {
     window.print();
@@ -253,6 +268,22 @@ export default function MonthlyReportView({
           value={selectedMonth}
           onChange={(e) => setSelectedMonth(e.target.value)}
         />
+
+        {selectedStudentId && hasAnyClasses && uniqueSubjects.length > 1 && (
+          <select
+            className="px-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:outline-none focus:border-[var(--accent)] text-sm font-semibold text-slate-700"
+            value={activeSubjectFilter}
+            onChange={(e) => setSubjectFilterMode(e.target.value)}
+          >
+            <option value="separate">Separate Subjects (Page Break)</option>
+            <option value="combined">Consolidated (All Subjects)</option>
+            {uniqueSubjects.map((sub) => (
+              <option key={sub} value={sub}>
+                {sub} Only
+              </option>
+            ))}
+          </select>
+        )}
 
         {selectedStudentId && hasAnyClasses && (
           <>
