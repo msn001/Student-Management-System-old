@@ -1,4 +1,54 @@
-import { Student } from '../types';
+import { Student, ClassSlot } from '../types';
+
+/**
+ * Resolves the complete schedule for a given date, combining regular weekly slots,
+ * one-off makeup classes, and applying any daily modifications or cancellations.
+ */
+export function getSlotsForDate(
+  dateStr: string,
+  slots: ClassSlot[],
+  dailyAdjustments: Record<string, Record<string, { time?: string; duration?: number; teacherId?: string; isCancelled?: boolean }>>
+): ClassSlot[] {
+  if (!dateStr) return [];
+  const parts = dateStr.split('-').map(Number);
+  const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
+  const dayOfWeek = dateObj.getDay();
+  const dayAdjustments = dailyAdjustments[dateStr] || {};
+
+  // 1. Get weekly slots for this weekday, unless they are cancelled for this date
+  const weeklySlots = slots
+    .filter((s) => {
+      // Ignore one-off makeup/adjusted classes (they have date property and will be combined in step 2)
+      if (s.date) return false;
+      
+      // Match day of week
+      if (s.day !== dayOfWeek) return false;
+      
+      // Check if cancelled for this specific date
+      if (dayAdjustments[s.id]?.isCancelled) return false;
+      
+      return true;
+    })
+    .map((s) => {
+      // Apply temporary overrides for time, duration, or teacher
+      const adj = dayAdjustments[s.id];
+      if (adj) {
+        return {
+          ...s,
+          time: adj.time || s.time,
+          duration: adj.duration || s.duration,
+          teacherId: adj.teacherId || s.teacherId,
+        };
+      }
+      return s;
+    });
+
+  // 2. Get one-off slots specifically scheduled for this date
+  const oneOffSlots = slots.filter((s) => s.date === dateStr);
+
+  // Combine both and sort by time
+  return [...weeklySlots, ...oneOffSlots].sort((a, b) => a.time.localeCompare(b.time));
+}
 
 /**
  * Formats a 24-hour time string (e.g. "14:30") to standard 12-hour AM/PM format (e.g. "2:30 PM").

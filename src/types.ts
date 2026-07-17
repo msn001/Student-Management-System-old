@@ -19,6 +19,7 @@ export interface ClassSlot {
   day: number; // 0 = Sunday, 1 = Monday, etc.
   time: string; // "HH:MM"
   duration: number; // in minutes
+  date?: string; // "YYYY-MM-DD" for one-off makeup or adjusted classes
 }
 
 export interface LessonEntry {

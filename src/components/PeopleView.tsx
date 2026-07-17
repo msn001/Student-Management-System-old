@@ -26,6 +26,10 @@ export default function PeopleView({
   const [newZoom, setNewZoom] = useState('');
   const [newGoogleMeet, setNewGoogleMeet] = useState('');
 
+  // Search filter states
+  const [teacherQuery, setTeacherQuery] = useState('');
+  const [studentQuery, setStudentQuery] = useState('');
+
   // Editing state
   const [editingTeacherId, setEditingTeacherId] = useState<string | null>(null);
   const [editingTeacherName, setEditingTeacherName] = useState('');
@@ -129,15 +133,30 @@ export default function PeopleView({
     await StorageService.saveKey('students', updated);
   };
 
+  const filteredTeachers = teachers.filter((t) =>
+    t.name.toLowerCase().includes(teacherQuery.toLowerCase())
+  );
+
+  const filteredStudents = students.filter((s) => {
+    const query = studentQuery.toLowerCase();
+    return (
+      s.name.toLowerCase().includes(query) ||
+      (s.teamsId || '').toLowerCase().includes(query) ||
+      (s.zoom || '').toLowerCase().includes(query) ||
+      (s.googleMeet || '').toLowerCase().includes(query)
+    );
+  });
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
       {/* Teachers Column */}
-      <div className="bg-white rounded-xl border-2 border-[var(--line-strong)] p-6">
-        <h3 className="serif-title font-semibold text-lg border-b pb-2 mb-4">Teachers</h3>
-        <div className="flex gap-2 mb-6">
+      <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
+        <h3 className="serif-title font-semibold text-lg border-b pb-2 mb-4 text-slate-800">Teachers</h3>
+        
+        <div className="flex gap-2 mb-4">
           <input
             type="text"
-            className="flex-1 px-3 py-2 border-2 border-[var(--line-strong)] rounded-md focus:border-[var(--accent)] focus:outline-none"
+            className="flex-1 px-3 py-2 border border-slate-300 rounded focus:border-[var(--accent)] focus:outline-none"
             placeholder="Teacher's name"
             value={newTeacherName}
             onChange={(e) => setNewTeacherName(e.target.value)}
@@ -145,19 +164,30 @@ export default function PeopleView({
           />
           <button
             onClick={handleAddTeacher}
-            className="px-4 py-2 bg-[var(--accent)] text-white font-semibold rounded-md hover:bg-[var(--accent-dark)] cursor-pointer flex items-center gap-1"
+            className="px-4 py-2 bg-[var(--accent)] text-white font-semibold rounded hover:bg-[var(--accent-dark)] cursor-pointer flex items-center gap-1 transition-colors"
           >
             <Plus size={16} /> Add
           </button>
         </div>
 
+        {/* Search Bar */}
+        <div className="mb-6">
+          <input
+            type="text"
+            className="w-full px-3 py-1.5 border border-slate-200 rounded bg-slate-50 focus:bg-white focus:border-[var(--accent)] focus:outline-none text-xs placeholder-slate-400"
+            placeholder="🔍 Search teachers by name..."
+            value={teacherQuery}
+            onChange={(e) => setTeacherQuery(e.target.value)}
+          />
+        </div>
+
         <div className="space-y-3">
-          {teachers.length === 0 ? (
-            <div className="text-center py-6 border-2 border-dashed border-[var(--line-strong)] rounded-lg text-slate-400">
-              No teachers added yet.
+          {filteredTeachers.length === 0 ? (
+            <div className="text-center py-6 border border-dashed border-slate-200 rounded-lg text-slate-400 text-xs">
+              {teacherQuery ? 'No matching teachers found.' : 'No teachers added yet.'}
             </div>
           ) : (
-            teachers
+            filteredTeachers
               .slice()
               .sort((a, b) => a.name.localeCompare(b.name))
               .map((t) => {
@@ -228,15 +258,15 @@ export default function PeopleView({
       </div>
 
       {/* Students Column */}
-      <div className="bg-white rounded-xl border-2 border-[var(--line-strong)] p-6">
-        <h3 className="serif-title font-semibold text-lg border-b pb-2 mb-4">Students</h3>
-        <div className="space-y-3 mb-6 p-4 border border-[var(--line)] rounded-lg bg-slate-50">
+      <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
+        <h3 className="serif-title font-semibold text-lg border-b pb-2 mb-4 text-slate-800">Students</h3>
+        <div className="space-y-3 mb-6 p-4 border border-slate-150 rounded-lg bg-slate-50/50">
           <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">Add New Student</div>
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">Full Name</label>
             <input
               type="text"
-              className="w-full px-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:border-[var(--accent)] focus:outline-none"
+              className="w-full px-3 py-1.5 border border-slate-300 bg-white rounded focus:border-[var(--accent)] focus:outline-none"
               placeholder="Student's name"
               value={newStudentName}
               onChange={(e) => setNewStudentName(e.target.value)}
@@ -247,7 +277,7 @@ export default function PeopleView({
               <label className="block text-xs font-semibold text-slate-600 mb-1">Microsoft Teams ID</label>
               <input
                 type="text"
-                className="w-full px-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:border-[var(--accent)] focus:outline-none text-xs"
+                className="w-full px-3 py-1.5 border border-slate-300 bg-white rounded focus:border-[var(--accent)] focus:outline-none text-xs"
                 placeholder="e.g. msnadeem@..."
                 value={newTeamsId}
                 onChange={(e) => setNewTeamsId(e.target.value)}
@@ -257,7 +287,7 @@ export default function PeopleView({
               <label className="block text-xs font-semibold text-slate-600 mb-1">Zoom Meeting Link/ID</label>
               <input
                 type="text"
-                className="w-full px-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:border-[var(--accent)] focus:outline-none text-xs"
+                className="w-full px-3 py-1.5 border border-slate-300 bg-white rounded focus:border-[var(--accent)] focus:outline-none text-xs"
                 placeholder="Zoom ID or Link"
                 value={newZoom}
                 onChange={(e) => setNewZoom(e.target.value)}
@@ -267,7 +297,7 @@ export default function PeopleView({
               <label className="block text-xs font-semibold text-slate-600 mb-1">Google Meet Link/ID</label>
               <input
                 type="text"
-                className="w-full px-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:border-[var(--accent)] focus:outline-none text-xs"
+                className="w-full px-3 py-1.5 border border-slate-300 bg-white rounded focus:border-[var(--accent)] focus:outline-none text-xs"
                 placeholder="Meet Link"
                 value={newGoogleMeet}
                 onChange={(e) => setNewGoogleMeet(e.target.value)}
@@ -277,20 +307,31 @@ export default function PeopleView({
           <div className="pt-2">
             <button
               onClick={handleAddStudent}
-              className="w-full px-4 py-2 bg-[var(--accent)] text-white font-semibold rounded hover:bg-[var(--accent-dark)] cursor-pointer flex justify-center items-center gap-1"
+              className="w-full px-4 py-2 bg-[var(--accent)] text-white font-semibold rounded hover:bg-[var(--accent-dark)] cursor-pointer flex justify-center items-center gap-1 transition-colors"
             >
               <Plus size={16} /> Add Student
             </button>
           </div>
         </div>
 
+        {/* Search Bar */}
+        <div className="mb-4">
+          <input
+            type="text"
+            className="w-full px-3 py-1.5 border border-slate-200 rounded bg-slate-50 focus:bg-white focus:border-[var(--accent)] focus:outline-none text-xs placeholder-slate-400"
+            placeholder="🔍 Search students by name, Teams ID, Zoom or Meet..."
+            value={studentQuery}
+            onChange={(e) => setStudentQuery(e.target.value)}
+          />
+        </div>
+
         <div className="space-y-3">
-          {students.length === 0 ? (
-            <div className="text-center py-6 border-2 border-dashed border-[var(--line-strong)] rounded-lg text-slate-400">
-              No students added yet.
+          {filteredStudents.length === 0 ? (
+            <div className="text-center py-6 border border-dashed border-slate-200 rounded-lg text-slate-400 text-xs">
+              {studentQuery ? 'No matching students found.' : 'No students added yet.'}
             </div>
           ) : (
-            students
+            filteredStudents
               .slice()
               .sort((a, b) => a.name.localeCompare(b.name))
               .map((s) => {

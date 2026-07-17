@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ClassSlot, Student, Teacher, LessonEntry } from '../types';
 import { StorageService } from '../lib/storage';
 import { Bell, Calendar, ClipboardList, AlertCircle, Video, Clock } from 'lucide-react';
-import { formatTimeToAMPM } from '../lib/utils';
+import { formatTimeToAMPM, getSlotsForDate } from '../lib/utils';
 
 interface DashboardViewProps {
   slots: ClassSlot[];
@@ -13,6 +13,7 @@ interface DashboardViewProps {
   onUpdateSubs: (mKey: string, subs: Record<string, Record<string, string>>) => void;
   dashDate: string;
   onUpdateDashDate: (date: string) => void;
+  dailyAdjustments: Record<string, Record<string, { time?: string; duration?: number; teacherId?: string; isCancelled?: boolean }>>;
 }
 
 const SCHOOL_DAY_CUTOFF_HOUR = 6;
@@ -26,6 +27,7 @@ export default function DashboardView({
   onUpdateSubs,
   dashDate,
   onUpdateDashDate,
+  dailyAdjustments,
 }: DashboardViewProps) {
   const [selectedDateStr, setSelectedDateStr] = useState(dashDate);
   const [selectedTeacherId, setSelectedTeacherId] = useState('');
@@ -132,8 +134,8 @@ export default function DashboardView({
   useEffect(() => {
     if (!notifyEnabled || !isLiveSession) return;
     
-    // Find classes starting in next 10 minutes
-    const todaySlots = slots.filter((s) => s.day === selectedDateObj.getDay());
+    // Find classes starting in next 10 minutes (using resolved schedule)
+    const todaySlots = getSlotsForDate(selectedDateStr, slots, dailyAdjustments);
     todaySlots.forEach((s) => {
       const occ = getSlotOccurrence(selectedDateObj, s);
       const diffMin = (occ.getTime() - currentTime.getTime()) / 60000;
@@ -162,10 +164,10 @@ export default function DashboardView({
         }
       }
     });
-  }, [currentTime, notifyEnabled, isLiveSession, slots, selectedDateObj, selectedDateStr, students]);
+  }, [currentTime, notifyEnabled, isLiveSession, slots, selectedDateObj, selectedDateStr, students, dailyAdjustments]);
 
-  // Today's classes
-  const todaySlots = slots.filter((s) => s.day === selectedDateObj.getDay());
+  // Today's classes (resolved with makeup slots and daily overrides)
+  const todaySlots = getSlotsForDate(selectedDateStr, slots, dailyAdjustments);
 
   // Filter today's classes by selected teacher (incorporating substitution checks!)
   const filteredTodaySlots = todaySlots.filter((s) => {

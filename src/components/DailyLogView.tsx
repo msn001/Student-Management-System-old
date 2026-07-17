@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ClassSlot, Student, Teacher, LessonEntry } from '../types';
 import { StorageService } from '../lib/storage';
 import { Check, Info } from 'lucide-react';
-import { formatTimeToAMPM } from '../lib/utils';
+import { formatTimeToAMPM, getSlotsForDate } from '../lib/utils';
 
 interface DailyLogViewProps {
   slots: ClassSlot[];
@@ -14,6 +14,7 @@ interface DailyLogViewProps {
   subsByMonth: Record<string, Record<string, Record<string, string>>>;
   onUpdateLogs: (mKey: string, logs: Record<string, Record<string, LessonEntry>>) => void;
   onUpdateSubs: (mKey: string, subs: Record<string, Record<string, string>>) => void;
+  dailyAdjustments: Record<string, Record<string, { time?: string; duration?: number; teacherId?: string; isCancelled?: boolean }>>;
 }
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -28,6 +29,7 @@ export default function DailyLogView({
   subsByMonth,
   onUpdateLogs,
   onUpdateSubs,
+  dailyAdjustments,
 }: DailyLogViewProps) {
   const [filterTeacher, setFilterTeacher] = useState('');
   const [activeDate, setActiveDate] = useState(logDate);
@@ -53,14 +55,12 @@ export default function DailyLogView({
   const monthLogs = logsByMonth[mKey] || {};
   const monthSubs = subsByMonth[mKey] || {};
 
-  // Filter slots for this weekday and teacher
-  const daySlots = slots
+  // Filter slots using dynamic resolution helper (makeup classes + overrides)
+  const daySlots = getSlotsForDate(activeDate, slots, dailyAdjustments)
     .filter((s) => {
-      if (s.day !== dateObj.getDay()) return false;
       if (filterTeacher && s.teacherId !== filterTeacher) return false;
       return true;
-    })
-    .sort((a, b) => a.time.localeCompare(b.time));
+    });
 
   const getEffectiveTeacherId = (slot: ClassSlot) => {
     const subsForSlot = monthSubs[slot.id];

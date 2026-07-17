@@ -7,7 +7,8 @@ import DailyLogView from './components/DailyLogView';
 import MonthlyReportView from './components/MonthlyReportView';
 import StudentProfilesView from './components/StudentProfilesView';
 import PeopleView from './components/PeopleView';
-import { BookOpen, Calendar, Clock, Clipboard, Users, GraduationCap, Menu, X, Lock, Unlock, Settings, Key } from 'lucide-react';
+import AdjustmentsView from './components/AdjustmentsView';
+import { BookOpen, Calendar, Clock, Clipboard, Users, GraduationCap, Menu, X, Lock, Unlock, Settings, Key, CalendarClock } from 'lucide-react';
 
 const LOCKED_TABS = ['timetable', 'people'];
 
@@ -18,6 +19,7 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: Calendar },
   { id: 'timetable', label: 'Weekly Timetable', icon: Clock },
+  { id: 'adjustments', label: 'Daily Adjustments', icon: CalendarClock },
   { id: 'dailylog', label: 'Daily Log', icon: Clipboard },
   { id: 'report', label: 'Monthly Report', icon: BookOpen },
   { id: 'profiles', label: 'Student Profiles', icon: GraduationCap },
@@ -27,6 +29,7 @@ const TABS = [
 const TAB_LABELS: Record<string, string> = {
   dashboard: 'Dashboard Overview',
   timetable: 'Weekly Timetable',
+  adjustments: 'Daily Adjustments & Makeup Classes',
   dailylog: 'Daily Log Registers',
   report: 'Monthly Progress Report',
   profiles: 'Student Learning Profiles',
@@ -43,6 +46,7 @@ export default function App() {
   const [students, setStudents] = useState<Student[]>([]);
   const [slots, setSlots] = useState<ClassSlot[]>([]);
   const [studentProfiles, setStudentProfiles] = useState<Record<string, StudentProfile>>({});
+  const [dailyAdjustments, setDailyAdjustments] = useState<Record<string, Record<string, { time?: string; duration?: number; teacherId?: string; isCancelled?: boolean }>>>({});
 
   // Monthly and substitute buffers (keyed by "YYYY-MM")
   const [logsByMonth, setLogsByMonth] = useState<Record<string, Record<string, Record<string, LessonEntry>>>>({});
@@ -128,11 +132,13 @@ export default function App() {
         const loadedStudents = await StorageService.loadKey<Student[]>('students', []);
         const loadedSlots = await StorageService.loadKey<ClassSlot[]>('slots', []);
         const loadedProfiles = await StorageService.loadKey<Record<string, StudentProfile>>('studentProfiles', {});
+        const loadedAdjustments = await StorageService.loadKey<Record<string, Record<string, { time?: string; duration?: number; teacherId?: string; isCancelled?: boolean }>>>('dailyAdjustments', {});
 
         setTeachers(loadedTeachers);
         setStudents(loadedStudents);
         setSlots(loadedSlots);
         setStudentProfiles(loadedProfiles);
+        setDailyAdjustments(loadedAdjustments);
 
         // Compute current session date
         const schoolDate = getSchoolDateNow();
@@ -183,6 +189,11 @@ export default function App() {
     const parts = newDateStr.split('-');
     const mKey = `${parts[0]}-${parts[1]}`;
     await handleLoadMonthBuffer(mKey);
+  };
+
+  const handleUpdateAdjustments = async (newAdjustments: Record<string, Record<string, { time?: string; duration?: number; teacherId?: string; isCancelled?: boolean }>>) => {
+    setDailyAdjustments(newAdjustments);
+    await StorageService.saveKey('dailyAdjustments', newAdjustments);
   };
 
   // Callback to download individual teacher's weekly timetable as a printable PDF
@@ -480,6 +491,7 @@ export default function App() {
                   onUpdateSubs={(m, s) => setSubsByMonth((prev) => ({ ...prev, [m]: s }))}
                   dashDate={dashDate}
                   onUpdateDashDate={handleUpdateDashDate}
+                  dailyAdjustments={dailyAdjustments}
                 />
               )}
 
@@ -489,6 +501,18 @@ export default function App() {
                   students={students}
                   teachers={teachers}
                   onUpdateSlots={setSlots}
+                />
+              )}
+
+              {activeTab === 'adjustments' && (
+                <AdjustmentsView
+                  slots={slots}
+                  students={students}
+                  teachers={teachers}
+                  onUpdateSlots={setSlots}
+                  dailyAdjustments={dailyAdjustments}
+                  onUpdateAdjustments={handleUpdateAdjustments}
+                  defaultDate={dashDate}
                 />
               )}
 
@@ -503,6 +527,7 @@ export default function App() {
                   subsByMonth={subsByMonth}
                   onUpdateLogs={(m, l) => setLogsByMonth((prev) => ({ ...prev, [m]: l }))}
                   onUpdateSubs={(m, s) => setSubsByMonth((prev) => ({ ...prev, [m]: s }))}
+                  dailyAdjustments={dailyAdjustments}
                 />
               )}
 
