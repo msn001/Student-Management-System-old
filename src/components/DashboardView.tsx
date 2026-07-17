@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ClassSlot, Student, Teacher, LessonEntry } from '../types';
 import { StorageService } from '../lib/storage';
-import { Bell, Calendar, ClipboardList, AlertCircle, Video } from 'lucide-react';
+import { Bell, Calendar, ClipboardList, AlertCircle, Video, Clock } from 'lucide-react';
+import { formatTimeToAMPM } from '../lib/utils';
 
 interface DashboardViewProps {
   slots: ClassSlot[];
@@ -145,7 +146,7 @@ export default function DashboardView({
         if (!localStorage.getItem(key)) {
           localStorage.setItem(key, 'true');
           new Notification(`Class starting in 10 minutes!`, {
-            body: `${name} — ${s.subject} at ${s.time}`,
+            body: `${name} — ${s.subject} at ${formatTimeToAMPM(s.time)}`,
           });
         }
       }
@@ -156,7 +157,7 @@ export default function DashboardView({
         if (!localStorage.getItem(key)) {
           localStorage.setItem(key, 'true');
           new Notification(`Class starting in 5 minutes!`, {
-            body: `${name} — ${s.subject} at ${s.time}`,
+            body: `${name} — ${s.subject} at ${formatTimeToAMPM(s.time)}`,
           });
         }
       }
@@ -199,6 +200,18 @@ export default function DashboardView({
           return { slot: s, diffMin };
         })
         .filter((u) => u.diffMin > 0 && u.diffMin <= 10)
+        .sort((a, b) => a.diffMin - b.diffMin)
+    : [];
+
+  // Compile next 30 minutes classes
+  const comingClasses30 = isLiveSession
+    ? todaySlots
+        .map((s) => {
+          const occ = getSlotOccurrence(selectedDateObj, s);
+          const diffMin = (occ.getTime() - currentTime.getTime()) / 60000;
+          return { slot: s, diffMin };
+        })
+        .filter((u) => u.diffMin > 0 && u.diffMin <= 30)
         .sort((a, b) => a.diffMin - b.diffMin)
     : [];
 
@@ -338,6 +351,106 @@ export default function DashboardView({
         </div>
       )}
 
+      {/* Scrollable Coming Classes inside next 30 minutes */}
+      {isLiveSession && (
+        <div className="space-y-3 border-2 border-slate-200 bg-slate-50/50 p-4 rounded-xl shadow-xs">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-extrabold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+              <Clock size={12} className="text-blue-500" /> Coming up in the next 30 minutes
+            </h4>
+            <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full font-mono">
+              {comingClasses30.length} class{comingClasses30.length === 1 ? '' : 'es'}
+            </span>
+          </div>
+
+          {comingClasses30.length === 0 ? (
+            <div className="text-center py-4 bg-white border border-dashed border-slate-300 rounded-lg text-slate-400 text-xs font-semibold">
+              No classes starting in the next 30 minutes.
+            </div>
+          ) : (
+            <div className="flex gap-4 overflow-x-auto pb-2.5 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+              {comingClasses30.map(({ slot: cSlot, diffMin }) => {
+                const student = students.find((st) => st.id === cSlot.studentId);
+                const effTeacherId = getEffectiveTeacherId(cSlot);
+                const teacher = teachers.find((t) => t.id === effTeacherId);
+                const isSub = effTeacherId !== cSlot.teacherId;
+                const mins = Math.ceil(diffMin);
+
+                return (
+                  <div
+                    key={cSlot.id}
+                    className="min-w-[260px] max-w-[280px] bg-white border-2 border-slate-200 p-3.5 rounded-lg flex flex-col justify-between shadow-xs hover:border-blue-400 hover:shadow-sm transition-all shrink-0"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[11px] font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded flex items-center gap-1">
+                          <Clock size={10} className="text-slate-500" />
+                          {formatTimeToAMPM(cSlot.time)}
+                        </span>
+                        <span className="text-[11px] font-extrabold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">
+                          In {mins} min{mins === 1 ? '' : 's'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <div className="font-bold text-slate-900 text-sm tracking-tight">{student?.name || 'Removed Student'}</div>
+                        <div className="text-[11px] text-slate-500 font-semibold mt-0.5 flex items-center gap-1">
+                          Teacher: <span className="text-slate-700">{teacher?.name || 'Removed'}</span>
+                          {isSub && (
+                            <span className="text-[9px] bg-amber-100 text-amber-800 px-1 rounded font-bold font-mono">SUB</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="pt-1">
+                        <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full ${getSubjectClass(cSlot.subject)}`}>
+                          {cSlot.subject}
+                        </span>
+                      </div>
+                    </div>
+
+                    {student && (student.zoom || student.teamsId || student.googleMeet) && (
+                      <div className="border-t border-dashed border-slate-100 pt-2.5 mt-3 flex items-center gap-1.5 flex-wrap">
+                        {student.zoom && (
+                          <a
+                            href={student.zoom.startsWith('http') ? student.zoom : `https://zoom.us/j/${student.zoom}`}
+                            target="_blank"
+                            rel="noreferrer referrer"
+                            className="text-[10px] font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-100 flex items-center gap-1 font-mono shrink-0 select-all"
+                            title={`Open Zoom: ${student.zoom}`}
+                          >
+                            <Video size={10} /> Zoom: {student.zoom}
+                          </a>
+                        )}
+                        {student.teamsId && (
+                          <span
+                            className="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100 flex items-center gap-1 font-mono shrink-0 select-all"
+                            title={`Teams: ${student.teamsId}`}
+                          >
+                            <Video size={10} /> Teams: {student.teamsId}
+                          </span>
+                        )}
+                        {student.googleMeet && (
+                          <a
+                            href={student.googleMeet.startsWith('http') ? student.googleMeet : `https://meet.google.com/${student.googleMeet}`}
+                            target="_blank"
+                            rel="noreferrer referrer"
+                            className="text-[10px] font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-100 flex items-center gap-1 font-mono shrink-0 select-all"
+                            title={`Open Meet: ${student.googleMeet}`}
+                          >
+                            <Video size={10} /> Meet: {student.googleMeet}
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Summary Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-[#FBFCFD] p-5 rounded-xl border border-[var(--line)] shadow-sm">
@@ -391,7 +504,7 @@ export default function DashboardView({
                   return (
                     <tr key={s.id} className="hover:bg-slate-50/50">
                       <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-slate-700">
-                        {s.time} <span className="text-slate-400 font-normal">&middot; {s.duration}m</span>
+                        {formatTimeToAMPM(s.time)} <span className="text-slate-400 font-normal">&middot; {s.duration}m</span>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-slate-900">
                         {student?.name || 'Removed Student'}
@@ -419,10 +532,10 @@ export default function DashboardView({
                                 href={student.zoom.startsWith('http') ? student.zoom : `https://zoom.us/j/${student.zoom}`}
                                 target="_blank"
                                 rel="noreferrer referrer"
-                                className="inline-flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-100 font-semibold font-mono"
+                                className="inline-flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-100 font-semibold font-mono select-all"
                                 title={`Open Zoom link or ID: ${student.zoom}`}
                               >
-                                <Video size={10} /> Zoom
+                                <Video size={10} /> Zoom: {student.zoom}
                               </a>
                             )}
                             {student.googleMeet && (
@@ -430,10 +543,10 @@ export default function DashboardView({
                                 href={student.googleMeet.startsWith('http') ? student.googleMeet : `https://meet.google.com/${student.googleMeet}`}
                                 target="_blank"
                                 rel="noreferrer referrer"
-                                className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-100 font-semibold font-mono"
+                                className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-100 font-semibold font-mono select-all"
                                 title={`Open Google Meet: ${student.googleMeet}`}
                               >
-                                <Video size={10} /> Meet
+                                <Video size={10} /> Meet: {student.googleMeet}
                               </a>
                             )}
                           </div>

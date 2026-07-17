@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ClassSlot, Student, Teacher } from '../types';
 import { StorageService } from '../lib/storage';
 import { Plus, Edit, Trash2, Search, X } from 'lucide-react';
+import { getStudentDisplayName, formatTimeToAMPM } from '../lib/utils';
 
 interface TimetableViewProps {
   slots: ClassSlot[];
@@ -285,7 +286,7 @@ export default function TimetableView({ slots, students, teachers, onUpdateSlots
                   .sort((a, b) => a.name.localeCompare(b.name))
                   .map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name}
+                      {getStudentDisplayName(s)}
                     </option>
                   ))}
               </select>
@@ -494,7 +495,7 @@ export default function TimetableView({ slots, students, teachers, onUpdateSlots
                     </span>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-slate-700">
-                    {slot.time}
+                    {formatTimeToAMPM(slot.time)}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-slate-900">
                     {studentName}

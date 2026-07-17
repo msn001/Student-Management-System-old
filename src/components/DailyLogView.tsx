@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ClassSlot, Student, Teacher, LessonEntry } from '../types';
 import { StorageService } from '../lib/storage';
 import { Check, Info } from 'lucide-react';
+import { formatTimeToAMPM } from '../lib/utils';
 
 interface DailyLogViewProps {
   slots: ClassSlot[];
@@ -297,7 +298,7 @@ function LogEntryCard({
           </span>
         </div>
         <div className="text-xs text-[var(--ink-soft)] font-medium">
-          Scheduled: <strong>{slot.time}</strong> &middot; {slot.duration} min
+          Scheduled: <strong>{formatTimeToAMPM(slot.time)}</strong> &middot; {slot.duration} min
         </div>
       </div>
 

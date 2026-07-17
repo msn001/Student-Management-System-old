@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Student, Teacher, ClassSlot, LessonEntry } from '../types';
 import { FileText, Printer, Share2, Clipboard } from 'lucide-react';
+import { getStudentDisplayName, formatTimeToAMPM, getFirstName } from '../lib/utils';
 
 interface MonthlyReportViewProps {
   students: Student[];
@@ -157,7 +158,7 @@ export default function MonthlyReportView({
       : 0;
 
     const lines: string[] = [];
-    lines.push(`${student.name} — ${monthName} Lesson Report`);
+    lines.push(`${getFirstName(student.name)} — ${monthName} Lesson Report`);
     lines.push(
       `Scheduled: ${reportData.totals.scheduled}  |  Present: ${reportData.totals.present}  |  Absent: ${reportData.totals.absent}  |  On Leave: ${reportData.totals.leave}  |  Completion: ${pct}%`
     );
@@ -281,7 +282,7 @@ export default function MonthlyReportView({
             .sort((a, b) => a.name.localeCompare(b.name))
             .map((s) => (
               <option key={s.id} value={s.id}>
-                {s.name}
+                {getStudentDisplayName(s)}
               </option>
             ))}
         </select>
@@ -324,7 +325,7 @@ export default function MonthlyReportView({
         <div className="space-y-6 pt-4 bg-white rounded-xl border border-slate-200 p-6 md:p-8">
           {/* Main heading - clean, with no other layout elements or headers above it */}
           <div className="border-b pb-4 mb-2">
-            <h2 className="serif-title font-bold text-2xl text-[var(--ink)]">{student?.name}</h2>
+            <h2 className="serif-title font-bold text-2xl text-[var(--ink)]">{getFirstName(student?.name || '')}</h2>
             <p className="text-sm font-semibold text-[var(--ink-soft)] mt-1">
               Monthly Lesson Report &middot; {monthName}
             </p>

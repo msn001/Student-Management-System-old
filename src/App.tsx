@@ -7,7 +7,9 @@ import DailyLogView from './components/DailyLogView';
 import MonthlyReportView from './components/MonthlyReportView';
 import StudentProfilesView from './components/StudentProfilesView';
 import PeopleView from './components/PeopleView';
-import { BookOpen, Calendar, Clock, Clipboard, Users, GraduationCap, Menu, X } from 'lucide-react';
+import { BookOpen, Calendar, Clock, Clipboard, Users, GraduationCap, Menu, X, Lock, Unlock, Settings, Key } from 'lucide-react';
+
+const LOCKED_TABS = ['timetable', 'people'];
 
 const SCHOOL_DAY_CUTOFF_HOUR = 6;
 
@@ -52,6 +54,57 @@ export default function App() {
 
   // Printable Teacher Timetable HTML State
   const [printTeacherHtml, setPrintTeacherHtml] = useState<string>('');
+
+  // Lock / Unlock features for Administrative Tabs (Weekly Timetable & Teachers/Students)
+  const [isUnlocked, setIsUnlocked] = useState(() => {
+    return localStorage.getItem('lesson_register_unlocked') === 'true';
+  });
+  const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const [pendingTab, setPendingTab] = useState<string | null>(null);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [adminPin, setAdminPin] = useState(() => {
+    return localStorage.getItem('lesson_register_pin') || '1234';
+  });
+  const [showPinSettings, setShowPinSettings] = useState(false);
+  const [newPinInput, setNewPinInput] = useState('');
+
+  const handleLock = () => {
+    setIsUnlocked(false);
+    localStorage.removeItem('lesson_register_unlocked');
+    if (LOCKED_TABS.includes(activeTab)) {
+      setActiveTab('dashboard');
+    }
+  };
+
+  const handleUnlockAttempt = () => {
+    if (pinInput === adminPin) {
+      setIsUnlocked(true);
+      localStorage.setItem('lesson_register_unlocked', 'true');
+      setPinError('');
+      setPinInput('');
+      setShowUnlockModal(false);
+      if (pendingTab) {
+        setActiveTab(pendingTab);
+        setPendingTab(null);
+      }
+    } else {
+      setPinError('Incorrect passcode. Try again.');
+    }
+  };
+
+  const handleChangePin = () => {
+    const trimmed = newPinInput.trim();
+    if (trimmed.length < 4) {
+      alert('PIN must be at least 4 characters long.');
+      return;
+    }
+    setAdminPin(trimmed);
+    localStorage.setItem('lesson_register_pin', trimmed);
+    setNewPinInput('');
+    setShowPinSettings(false);
+    alert('PIN updated successfully!');
+  };
 
   // Overnight school-day cutoff calculations (9 PM - 6 AM session handling)
   const getSchoolDateNow = (): Date => {
@@ -298,23 +351,96 @@ export default function App() {
                 <button
                   key={tab.id}
                   onClick={() => {
-                    setActiveTab(tab.id);
+                    if (LOCKED_TABS.includes(tab.id) && !isUnlocked) {
+                      setPendingTab(tab.id);
+                      setPinInput('');
+                      setPinError('');
+                      setShowUnlockModal(true);
+                    } else {
+                      setActiveTab(tab.id);
+                    }
                     setIsMobileMenuOpen(false);
                   }}
                   className={`
-                    w-full flex items-center px-4 py-3 rounded-lg text-sm font-medium transition-all cursor-pointer
+                    w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium transition-all cursor-pointer
                     ${isActive 
                       ? 'bg-blue-600 text-white font-semibold shadow-md shadow-blue-900/20' 
                       : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                     }
                   `}
                 >
-                  <Icon size={18} className={`mr-3 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                  {tab.label}
+                  <div className="flex items-center">
+                    <Icon size={18} className={`mr-3 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                    {tab.label}
+                  </div>
+                  {LOCKED_TABS.includes(tab.id) && (
+                    isUnlocked ? (
+                      <Unlock size={14} className="text-emerald-500" title="Unlocked" />
+                    ) : (
+                      <Lock size={14} className="text-slate-500" title="Locked" />
+                    )
+                  )}
                 </button>
               );
             })}
           </nav>
+
+          {/* Sidebar Footer with Lock Status */}
+          <div className="p-4 border-t border-slate-800 bg-slate-950/40 space-y-2 shrink-0">
+            <div className="flex items-center justify-between text-xs text-slate-400 px-2">
+              <span className="flex items-center gap-1.5 font-mono text-[10px]">
+                {isUnlocked ? (
+                  <>
+                    <Unlock size={12} className="text-emerald-500 animate-pulse" />
+                    ADMIN: UNLOCKED
+                  </>
+                ) : (
+                  <>
+                    <Lock size={12} className="text-slate-500" />
+                    ADMIN: LOCKED
+                  </>
+                )}
+              </span>
+              
+              <div className="flex gap-2">
+                {isUnlocked && (
+                  <button 
+                    onClick={() => {
+                      setNewPinInput('');
+                      setShowPinSettings(true);
+                    }}
+                    className="p-1 hover:text-white text-slate-400 hover:bg-slate-800 rounded transition-colors cursor-pointer"
+                    title="Change Passcode"
+                  >
+                    <Settings size={14} />
+                  </button>
+                )}
+                
+                {isUnlocked ? (
+                  <button 
+                    onClick={handleLock}
+                    className="p-1 hover:text-red-400 text-slate-400 hover:bg-slate-800 rounded transition-colors cursor-pointer text-xs flex items-center gap-1 font-bold"
+                    title="Lock Administrative Tabs"
+                  >
+                    Lock Tabs
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => {
+                      setPendingTab(null);
+                      setPinInput('');
+                      setPinError('');
+                      setShowUnlockModal(true);
+                    }}
+                    className="p-1 hover:text-blue-400 text-slate-400 hover:bg-slate-800 rounded transition-colors cursor-pointer text-xs font-bold"
+                    title="Unlock"
+                  >
+                    Unlock
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
 
 
         </aside>
@@ -418,6 +544,110 @@ export default function App() {
         </div>
 
       </div>
+
+      {/* Unlock Passcode Modal */}
+      {showUnlockModal && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-[100] no-print">
+          <div className="bg-white rounded-xl border-2 border-slate-300 p-6 w-full max-w-sm shadow-xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-blue-50 text-blue-600 rounded-lg">
+                <Lock size={20} />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base serif-title">Admin Passcode Required</h3>
+                <p className="text-xs text-slate-500">Accessing administrative/scheduling tools</p>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-700">Enter Admin PIN</label>
+              <input
+                type="password"
+                className="w-full px-3 py-2 border-2 border-slate-300 rounded focus:outline-none focus:border-blue-500 text-center tracking-widest text-lg font-mono font-bold bg-white"
+                placeholder="••••"
+                value={pinInput}
+                onChange={(e) => {
+                  setPinInput(e.target.value);
+                  setPinError('');
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && handleUnlockAttempt()}
+                autoFocus
+              />
+              {pinError && <p className="text-xs font-semibold text-red-500">{pinError}</p>}
+              <p className="text-[10px] text-slate-400">Default PIN: <strong className="font-mono">1234</strong></p>
+            </div>
+            
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={handleUnlockAttempt}
+                className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded text-sm cursor-pointer flex justify-center items-center gap-1"
+              >
+                <Key size={14} /> Unlock
+              </button>
+              <button
+                onClick={() => {
+                  setShowUnlockModal(false);
+                  setPendingTab(null);
+                  setPinInput('');
+                  setPinError('');
+                }}
+                className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded text-sm cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PIN Change Settings Modal */}
+      {showPinSettings && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-[100] no-print">
+          <div className="bg-white rounded-xl border-2 border-slate-300 p-6 w-full max-w-sm shadow-xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-slate-100 text-slate-700 rounded-lg">
+                <Settings size={20} />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base serif-title">Update Admin Passcode</h3>
+                <p className="text-xs text-slate-500">Secure access to Teacher, Student, & Timetable settings</p>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-700">New Admin PIN (Min. 4 chars)</label>
+              <input
+                type="text"
+                maxLength={8}
+                className="w-full px-3 py-2 border-2 border-slate-300 rounded focus:outline-none focus:border-blue-500 text-center tracking-widest text-lg font-mono font-bold bg-white"
+                placeholder="e.g. 5678"
+                value={newPinInput}
+                onChange={(e) => setNewPinInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleChangePin()}
+                autoFocus
+              />
+            </div>
+            
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={handleChangePin}
+                className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded text-sm cursor-pointer"
+              >
+                Save PIN
+              </button>
+              <button
+                onClick={() => {
+                  setShowPinSettings(false);
+                  setNewPinInput('');
+                }}
+                className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded text-sm cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
