@@ -132,7 +132,7 @@ export default function StudentProfilesView({
 
             if (isEditing) {
               return (
-                <div key={s.id} className="bg-white rounded-xl border-2 border-[var(--accent)] p-6 space-y-4 shadow-sm">
+                <div key={s.id} className="bg-slate-50/40 rounded-xl border border-blue-200 p-6 space-y-4 shadow-sm transition-all">
                   <div className="flex justify-between items-center border-b pb-2 mb-2">
                     <h3 className="serif-title font-bold text-lg text-[var(--accent-dark)]">
                       Update Profile: {s.name}
@@ -145,7 +145,7 @@ export default function StudentProfilesView({
                       <label className="block text-xs font-bold text-slate-600 mb-1">Book Currently Reading</label>
                       <input
                         type="text"
-                        className="w-full px-3 py-2 border border-[var(--line-strong)] rounded focus:outline-none focus:border-[var(--accent)]"
+                        className="w-full px-3 py-2 border border-[var(--line-strong)] rounded bg-white focus:outline-none focus:border-[var(--accent)]"
                         placeholder="e.g. NCERT Math Class 4"
                         value={editBook}
                         onChange={(e) => setEditBook(e.target.value)}
@@ -155,7 +155,7 @@ export default function StudentProfilesView({
                       <label className="block text-xs font-bold text-slate-600 mb-1">Qaida / Quran Progress</label>
                       <input
                         type="text"
-                        className="w-full px-3 py-2 border border-[var(--line-strong)] rounded focus:outline-none focus:border-[var(--accent)]"
+                        className="w-full px-3 py-2 border border-[var(--line-strong)] rounded bg-white focus:outline-none focus:border-[var(--accent)]"
                         placeholder="e.g. Qaida Noorania, page 18"
                         value={editQaida}
                         onChange={(e) => setEditQaida(e.target.value)}
@@ -182,7 +182,7 @@ export default function StudentProfilesView({
                     <label className="block text-xs font-bold text-slate-600 mb-1">General Progress Notes</label>
                     <textarea
                       rows={3}
-                      className="w-full px-3 py-2 border border-[var(--line-strong)] rounded focus:outline-none focus:border-[var(--accent)]"
+                      className="w-full px-3 py-2 border border-[var(--line-strong)] bg-white rounded focus:outline-none focus:border-[var(--accent)]"
                       placeholder="How the student is doing overall, strengths, areas to work on…"
                       value={editNotes}
                       onChange={(e) => setEditNotes(e.target.value)}
@@ -205,13 +205,13 @@ export default function StudentProfilesView({
                   <div className="flex gap-2 pt-2">
                     <button
                       onClick={() => handleSaveProfile(s.id)}
-                      className="px-4 py-2 bg-[var(--accent)] text-white font-semibold rounded hover:bg-[var(--accent-dark)] cursor-pointer"
+                      className="px-4 py-2 bg-[var(--accent)] text-white font-semibold rounded hover:bg-[var(--accent-dark)] cursor-pointer transition-colors shadow-xs"
                     >
                       Save Profile
                     </button>
                     <button
                       onClick={() => setEditingProfileId(null)}
-                      className="px-4 py-2 bg-slate-200 text-slate-700 rounded font-semibold hover:bg-slate-300 cursor-pointer"
+                      className="px-4 py-2 bg-slate-200 text-slate-700 rounded font-semibold hover:bg-slate-300 cursor-pointer transition-colors"
                     >
                       Cancel
                     </button>
@@ -231,10 +231,10 @@ export default function StudentProfilesView({
             return (
               <div
                 key={s.id}
-                className={`bg-[#FBFCFD] rounded-xl border-2 p-6 transition-all shadow-sm ${
+                className={`bg-white rounded-xl border border-slate-200 p-6 transition-all hover:shadow-md duration-300 ${
                   isStale
-                    ? 'border-l-4 border-l-[var(--warn)] border-[var(--line)]'
-                    : 'border-l-4 border-l-[var(--accent)] border-[var(--line)]'
+                    ? 'border-l-4 border-l-[var(--warn)]'
+                    : 'border-l-4 border-l-[var(--accent)]'
                 }`}
               >
                 <div className="flex justify-between items-start flex-wrap gap-4 mb-4">

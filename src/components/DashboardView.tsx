@@ -452,25 +452,48 @@ export default function DashboardView({
       )}
 
       {/* Summary Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-[#FBFCFD] p-5 rounded-xl border border-[var(--line)] shadow-sm">
-          <div className="serif-title font-bold text-3xl text-[var(--ink)]">{scheduledCount}</div>
-          <div className="text-xs text-[var(--ink-soft)] font-bold uppercase tracking-wider mt-1">
-            Classes Scheduled
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs hover:shadow-sm transition-all duration-300 border-l-4 border-l-[var(--accent)] flex flex-col justify-between">
+          <div>
+            <div className="text-[10px] font-bold text-[var(--ink-faint)] uppercase tracking-wider">
+              Classes Scheduled
+            </div>
+            <div className="serif-title font-bold text-3xl text-[var(--ink)] mt-1">{scheduledCount}</div>
+          </div>
+          <div className="mt-3 text-[11px] text-slate-500 font-medium">
+            Active classes on today's roster
           </div>
         </div>
-        <div className="bg-[#FBFCFD] p-5 rounded-xl border border-[var(--line)] shadow-sm">
-          <div className="serif-title font-bold text-3xl text-[var(--quran)]">{takenCount}</div>
-          <div className="text-xs text-[var(--ink-soft)] font-bold uppercase tracking-wider mt-1">
-            Classes Taken / Completed
+
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs hover:shadow-sm transition-all duration-300 border-l-4 border-l-[var(--quran)] flex flex-col justify-between">
+          <div>
+            <div className="text-[10px] font-bold text-[var(--ink-faint)] uppercase tracking-wider">
+              Classes Taken / Completed
+            </div>
+            <div className="serif-title font-bold text-3xl text-[var(--quran)] mt-1">{takenCount}</div>
+          </div>
+          <div className="mt-3 text-[11px] text-slate-500 font-medium flex gap-3 items-center flex-wrap">
+            <span className="inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">
+              Completed: {takenCount}
+            </span>
+            <span className="inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-700">
+              Pending Log: {pendingCount}
+            </span>
           </div>
         </div>
       </div>
 
-      <div className="text-xs text-[var(--ink-soft)] font-semibold flex gap-3 flex-wrap">
-        <span>Absent: {absentCount}</span> &middot;
-        <span>On Leave: {leaveCount}</span> &middot;
-        <span>Pending log: {pendingCount}</span>
+      <div className="flex gap-2 flex-wrap items-center">
+        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">Roster Metrics:</span>
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-100">
+          Absent &middot; {absentCount}
+        </span>
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-100">
+          On Leave &middot; {leaveCount}
+        </span>
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-100">
+          Total Slots &middot; {scheduledCount}
+        </span>
       </div>
 
       {/* Classes Table */}

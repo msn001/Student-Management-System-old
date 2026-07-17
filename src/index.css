@@ -11,25 +11,25 @@
   --bg: #f8fafc;
   --panel: #ffffff;
   --ink: #0f172a;
-  --ink-soft: #475569;
+  --ink-soft: #334155;
   --ink-faint: #64748b;
   --line: #e2e8f0;
   --line-strong: #cbd5e1;
   --accent: #2563eb;
   --accent-dark: #1d4ed8;
-  --accent-soft: #dbeafe;
+  --accent-soft: #eff6ff;
   --math: #2563eb;
-  --math-soft: #dbeafe;
+  --math-soft: #eff6ff;
   --science: #ea580c;
-  --science-soft: #ffedd5;
+  --science-soft: #fff7ed;
   --english: #7c3aed;
-  --english-soft: #f3e8ff;
+  --english-soft: #faf5ff;
   --quran: #059669;
-  --quran-soft: #d1fae5;
+  --quran-soft: #ecfdf5;
   --other: #475569;
-  --other-soft: #f1f5f9;
+  --other-soft: #f8fafc;
   --warn: #dc2626;
-  --warn-soft: #fee2e2;
+  --warn-soft: #fef2f2;
   --radius: 12px;
   --radius-sm: 8px;
 }
@@ -38,11 +38,46 @@ body {
   background-color: var(--bg);
   color: var(--ink);
   font-family: "Inter", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Custom styles for application */
 .serif-title {
   font-family: "Space Grotesk", sans-serif;
+  letter-spacing: -0.02em;
+}
+
+/* Form input, select, textarea styling overrides */
+input, select, textarea {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  font-size: 0.875rem !important; /* 14px for professional legibility */
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
+  transform: translateY(-0.5px);
+}
+
+/* Sleek minimalist custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 /* Print Overrides */
