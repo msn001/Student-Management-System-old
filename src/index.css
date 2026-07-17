@@ -82,13 +82,39 @@ input:focus, select:focus, textarea:focus {
 
 /* Print Overrides */
 @media print {
-  body {
+  /* Reset the entire html and body scroll parameters to allow standard print pagination */
+  html, body {
     background-color: #ffffff !important;
     color: #0f172a !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+    position: static !important;
   }
   
-  /* Hide UI elements, navigation tabs, and filters during print */
+  /* Make sure flex layouts are display block and allow overflow when printing */
+  .flex,
+  .flex-col,
+  .min-h-screen,
+  .overflow-hidden,
+  .overflow-y-auto,
+  div[class*="min-h-screen"],
+  div[class*="overflow-hidden"],
+  div[class*="bg-slate-900"],
+  div[class*="bg-slate-50"] {
+    display: block !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    position: static !important;
+    background-color: #ffffff !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* Hide UI elements, navigation tabs, sidebar and filters during print */
   .no-print, 
+  nav,
   nav.tabs, 
   .toolbar, 
   .section-sub, 
@@ -103,10 +129,15 @@ input:focus, select:focus, textarea:focus {
   }
 
   main {
+    display: block !important;
     border: none !important;
     padding: 0 !important;
+    margin: 0 !important;
     box-shadow: none !important;
     background: transparent !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto !important;
   }
 
   /* Specific directive for Monthly Report print: 
@@ -125,6 +156,11 @@ input:focus, select:focus, textarea:focus {
   th, td {
     border-bottom: 1px solid #0f172a !important;
     color: #0f172a !important;
+  }
+
+  /* Ensure printed tables don't get cut off and break cleanly */
+  tr {
+    page-break-inside: avoid !important;
   }
 }
 
