@@ -8,9 +8,11 @@ import MonthlyReportView from './components/MonthlyReportView';
 import StudentProfilesView from './components/StudentProfilesView';
 import PeopleView from './components/PeopleView';
 import AdjustmentsView from './components/AdjustmentsView';
-import { BookOpen, Calendar, Clock, Clipboard, Users, GraduationCap, Menu, X, Lock, Unlock, Settings, Key, CalendarClock } from 'lucide-react';
+import TeacherAttendanceView from './components/TeacherAttendanceView';
+import ManageAttendanceView from './components/ManageAttendanceView';
+import { BookOpen, Calendar, Clock, Clipboard, Users, GraduationCap, Menu, X, Lock, Unlock, Settings, Key, CalendarClock, Fingerprint, UserCheck } from 'lucide-react';
 
-const LOCKED_TABS = ['timetable', 'people', 'adjustments'];
+const LOCKED_TABS = ['timetable', 'people', 'adjustments', 'manage_attendance'];
 
 const SCHOOL_DAY_CUTOFF_HOUR = 6;
 
@@ -24,6 +26,8 @@ const TABS = [
   { id: 'report', label: 'Monthly Report', icon: BookOpen },
   { id: 'profiles', label: 'Student Profiles', icon: GraduationCap },
   { id: 'people', label: 'Teachers & Students', icon: Users },
+  { id: 'teacher_attendance', label: 'Teacher Attendance', icon: Fingerprint },
+  { id: 'manage_attendance', label: 'Manage Attendance', icon: UserCheck },
 ];
 
 const TAB_LABELS: Record<string, string> = {
@@ -34,6 +38,8 @@ const TAB_LABELS: Record<string, string> = {
   report: 'Monthly Progress Report',
   profiles: 'Student Learning Profiles',
   people: 'Teachers & Students Directory',
+  teacher_attendance: 'Teacher Attendance Kiosk & Sheets',
+  manage_attendance: 'Manage Attendance & Roster',
 };
 
 export default function App() {
@@ -559,6 +565,14 @@ export default function App() {
                   onUpdateStudents={setStudents}
                   onDownloadTimetable={handleDownloadTeacherTimetable}
                 />
+              )}
+
+              {activeTab === 'teacher_attendance' && (
+                <TeacherAttendanceView />
+              )}
+
+              {activeTab === 'manage_attendance' && (
+                <ManageAttendanceView />
               )}
             </div>
 
