@@ -10,7 +10,8 @@ import PeopleView from './components/PeopleView';
 import AdjustmentsView from './components/AdjustmentsView';
 import TeacherAttendanceView from './components/TeacherAttendanceView';
 import ManageAttendanceView from './components/ManageAttendanceView';
-import { BookOpen, Calendar, Clock, Clipboard, Users, GraduationCap, Menu, X, Lock, Unlock, Settings, Key, CalendarClock, Fingerprint, UserCheck } from 'lucide-react';
+import StudentAbsenceView from './components/StudentAbsenceView';
+import { BookOpen, Calendar, Clock, Clipboard, Users, GraduationCap, Menu, X, Lock, Unlock, Settings, Key, CalendarClock, Fingerprint, UserCheck, UserX } from 'lucide-react';
 
 const LOCKED_TABS = ['timetable', 'people', 'adjustments', 'manage_attendance'];
 
@@ -24,6 +25,7 @@ const TABS = [
   { id: 'adjustments', label: 'Daily Adjustments', icon: CalendarClock },
   { id: 'dailylog', label: 'Daily Log', icon: Clipboard },
   { id: 'report', label: 'Monthly Report', icon: BookOpen },
+  { id: 'student_absence', label: 'Absent/Leave Tracker', icon: UserX },
   { id: 'profiles', label: 'Student Profiles', icon: GraduationCap },
   { id: 'people', label: 'Teachers & Students', icon: Users },
   { id: 'teacher_attendance', label: 'Teacher Attendance', icon: Fingerprint },
@@ -36,6 +38,7 @@ const TAB_LABELS: Record<string, string> = {
   adjustments: 'Daily Adjustments & Makeup Classes',
   dailylog: 'Daily Log Registers',
   report: 'Monthly Progress Report',
+  student_absence: 'Absent & On Leave Students',
   profiles: 'Student Learning Profiles',
   people: 'Teachers & Students Directory',
   teacher_attendance: 'Teacher Attendance Kiosk & Sheets',
@@ -544,6 +547,16 @@ export default function App() {
                   slots={slots}
                   logsByMonth={logsByMonth}
                   subsByMonth={subsByMonth}
+                />
+              )}
+
+              {activeTab === 'student_absence' && (
+                <StudentAbsenceView
+                  slots={slots}
+                  students={students}
+                  teachers={teachers}
+                  dailyAdjustments={dailyAdjustments}
+                  logDate={logDate}
                 />
               )}
 
