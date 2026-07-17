@@ -304,7 +304,7 @@ export default function App() {
     return (
       <div className="fixed inset-0 bg-[#0f172a] flex flex-col items-center justify-center gap-3">
         <div className="w-8 h-8 rounded-full border-4 border-slate-700 border-t-blue-500 animate-spin"></div>
-        <div className="font-mono text-xs text-slate-400">Loading Lesson Register…</div>
+        <div className="font-mono text-xs text-slate-400">Loading Islamic Education Center…</div>
       </div>
     );
   }
@@ -322,10 +322,10 @@ export default function App() {
         {/* Mobile Navbar Header */}
         <div className="md:hidden flex items-center justify-between px-6 py-4 bg-slate-900 text-white shadow-md z-20 no-print">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center font-bold text-sm text-white font-serif">
-              L
+            <div className="w-8 h-8 rounded bg-emerald-600 flex items-center justify-center font-bold text-sm text-white font-serif">
+              I
             </div>
-            <span className="font-bold text-base tracking-tight">Lesson<span className="text-blue-500 font-extrabold">Register</span></span>
+            <span className="font-bold text-base tracking-tight">Islamic <span className="text-emerald-500 font-extrabold">Education Center</span></span>
           </div>
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -350,7 +350,7 @@ export default function App() {
         `}>
           <div className="p-6 border-b border-slate-800 flex items-center justify-between">
             <div>
-              <h1 className="text-lg font-bold tracking-tight">Lesson<span className="text-blue-500">Register</span></h1>
+              <h1 className="text-lg font-bold tracking-tight">Islamic <span className="text-emerald-500">Education Center</span></h1>
               <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest font-extrabold">Admin Dashboard</p>
             </div>
             <button
@@ -590,7 +590,7 @@ export default function App() {
             </div>
 
             <p className="text-center text-xs text-slate-400 font-semibold mt-6">
-              All changes are synchronized in real-time. Shared database instance &copy; Lesson Register.
+              All changes are synchronized in real-time. Shared database instance &copy; Islamic Education Center.
             </p>
           </main>
         </div>

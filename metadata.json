@@ -1,5 +1,5 @@
 {
-  "name": "Lesson Register",
+  "name": "Islamic Education Center",
   "description": "Weekly timetable, attendance tracker, lesson logs, student profiles, and automated monthly reports for teachers.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
