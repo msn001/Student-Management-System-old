@@ -102,10 +102,10 @@ input:focus, select:focus, textarea:focus {
   .min-h-screen,
   .overflow-hidden,
   .overflow-y-auto,
-  div[class*="min-h-screen"],
-  div[class*="overflow-hidden"],
-  div[class*="bg-slate-900"],
-  div[class*="bg-slate-50"] {
+  div[class*="min-h-screen"]:not(.no-print),
+  div[class*="overflow-hidden"]:not(.no-print),
+  div[class*="bg-slate-900"]:not(.no-print),
+  div[class*="bg-slate-50"]:not(.no-print) {
     display: block !important;
     height: auto !important;
     min-height: auto !important;
@@ -117,10 +117,15 @@ input:focus, select:focus, textarea:focus {
   }
 
   /* Hide UI elements, navigation tabs, sidebar and filters during print */
-  .no-print, 
+  .no-print,
+  div.no-print,
+  aside.no-print,
+  header.no-print,
+  div[class*="bg-slate"].no-print,
   nav,
   nav.tabs, 
   .toolbar, 
+  div.toolbar,
   .section-sub, 
   fieldset,
   button, 
