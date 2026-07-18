@@ -571,6 +571,7 @@ export default function App() {
                 <StudentProfilesView
                   students={students}
                   teachers={teachers}
+                  slots={slots}
                   studentProfiles={studentProfiles}
                   onUpdateProfiles={setStudentProfiles}
                 />
