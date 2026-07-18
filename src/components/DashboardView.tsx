@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ClassSlot, Student, Teacher, LessonEntry } from '../types';
 import { StorageService } from '../lib/storage';
-import { Bell, Calendar, ClipboardList, AlertCircle, Video, Clock } from 'lucide-react';
+import { Bell, Calendar, ClipboardList, AlertCircle, Video, Clock, Lock } from 'lucide-react';
 import { formatTimeToAMPM, getSlotsForDate } from '../lib/utils';
 
 interface DashboardViewProps {
@@ -14,6 +14,8 @@ interface DashboardViewProps {
   dashDate: string;
   onUpdateDashDate: (date: string) => void;
   dailyAdjustments: Record<string, Record<string, { time?: string; duration?: number; teacherId?: string; isCancelled?: boolean }>>;
+  isUnlocked: boolean;
+  onRequireUnlock: () => void;
 }
 
 const SCHOOL_DAY_CUTOFF_HOUR = 6;
@@ -28,6 +30,8 @@ export default function DashboardView({
   dashDate,
   onUpdateDashDate,
   dailyAdjustments,
+  isUnlocked,
+  onRequireUnlock,
 }: DashboardViewProps) {
   const [selectedDateStr, setSelectedDateStr] = useState(dashDate);
   const [selectedTeacherId, setSelectedTeacherId] = useState('');
@@ -583,23 +587,39 @@ export default function DashboardView({
                       {/* Substitute / Scheduled Teacher Selector */}
                       <td className="px-4 py-3 whitespace-nowrap text-xs">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <select
-                            className="text-xs px-2 py-0.5 border border-slate-300 bg-white rounded focus:outline-none focus:border-[var(--accent)]"
-                            value={isSub ? effTeacherId : ''}
-                            onChange={(e) => handleSubstituteChange(s.id, e.target.value)}
-                          >
-                            <option value="">
-                              Scheduled: {teachers.find((t) => t.id === s.teacherId)?.name || 'Removed Teacher'}
-                            </option>
-                            {teachers
-                              .filter((t) => t.id !== s.teacherId)
-                              .sort((a, b) => a.name.localeCompare(b.name))
-                              .map((t) => (
-                                <option key={t.id} value={t.id}>
-                                  Sub: {t.name}
-                                </option>
-                              ))}
-                          </select>
+                          {isUnlocked ? (
+                            <select
+                              className="text-xs px-2 py-0.5 border border-slate-300 bg-white rounded focus:outline-none focus:border-[var(--accent)]"
+                              value={isSub ? effTeacherId : ''}
+                              onChange={(e) => handleSubstituteChange(s.id, e.target.value)}
+                            >
+                              <option value="">
+                                Scheduled: {teachers.find((t) => t.id === s.teacherId)?.name || 'Removed Teacher'}
+                              </option>
+                              {teachers
+                                .filter((t) => t.id !== s.teacherId)
+                                .sort((a, b) => a.name.localeCompare(b.name))
+                                .map((t) => (
+                                  <option key={t.id} value={t.id}>
+                                    Sub: {t.name}
+                                  </option>
+                                ))}
+                            </select>
+                          ) : (
+                            <button
+                              onClick={onRequireUnlock}
+                              className="text-xs px-2 py-0.5 border border-slate-200 bg-slate-50 rounded text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition-colors flex items-center gap-1 cursor-pointer font-semibold"
+                              title="Unlock Admin to Substitute Teacher"
+                            >
+                              <Lock size={10} className="text-slate-400" />
+                              <span>
+                                {isSub 
+                                  ? `Sub: ${teachers.find((t) => t.id === effTeacherId)?.name || 'Removed'}` 
+                                  : `Scheduled: ${teachers.find((t) => t.id === s.teacherId)?.name || 'Removed Teacher'}`
+                                }
+                              </span>
+                            </button>
+                          )}
                           {isSub && (
                             <span className="text-[9px] bg-[var(--science-soft)] text-[var(--science)] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider font-mono">
                               Cover

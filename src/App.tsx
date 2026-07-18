@@ -501,6 +501,13 @@ export default function App() {
                   dashDate={dashDate}
                   onUpdateDashDate={handleUpdateDashDate}
                   dailyAdjustments={dailyAdjustments}
+                  isUnlocked={isUnlocked}
+                  onRequireUnlock={() => {
+                    setPendingTab(null);
+                    setPinInput('');
+                    setPinError('');
+                    setShowUnlockModal(true);
+                  }}
                 />
               )}
 
