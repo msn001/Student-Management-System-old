@@ -376,7 +376,7 @@ export default function MonthlyReportView({
                   <div>
                     <h2 className="serif-title font-bold text-2xl text-[var(--ink)]">{getFirstName(student?.name || '')}</h2>
                     <p className="text-sm font-semibold text-[var(--ink-soft)] mt-1">
-                      Monthly Lesson Report &middot; {monthName}{subj ? ` &middot; ${subj}` : ''}
+                      Monthly Lesson Report · {monthName}{subj ? ` · ${subj}` : ''}
                     </p>
                   </div>
                   {schoolLogo && (
