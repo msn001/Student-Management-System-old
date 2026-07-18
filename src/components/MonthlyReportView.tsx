@@ -14,6 +14,18 @@ interface MonthlyReportViewProps {
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+const formatHoursAndMinutes = (totalMinutes: number) => {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) {
+    return `${minutes}m`;
+  }
+  if (minutes === 0) {
+    return `${hours}h`;
+  }
+  return `${hours}h ${minutes}m`;
+};
+
 export default function MonthlyReportView({
   students,
   teachers,
@@ -86,8 +98,8 @@ export default function MonthlyReportView({
     const totalDays = getDaysInMonth(year, monthIndex);
 
     const dayMap: Record<string, any[]> = {};
-    const subjectStats: Record<string, { scheduled: number; present: number; absent: number; leave: number }> = {};
-    const totals = { scheduled: 0, present: 0, absent: 0, leave: 0 };
+    const subjectStats: Record<string, { scheduled: number; present: number; absent: number; leave: number; totalMinutes: number }> = {};
+    const totals = { scheduled: 0, present: 0, absent: 0, leave: 0, totalMinutes: 0 };
 
     for (let d = 1; d <= totalDays; d++) {
       const date = new Date(year, monthIndex, d);
@@ -98,16 +110,19 @@ export default function MonthlyReportView({
 
         const entry = monthLog[s.id]?.[dateStr] || null;
         const status = entry ? entry.status : '';
+        const classDuration = (entry && entry.actualDuration !== null && entry.actualDuration !== undefined) ? entry.actualDuration : s.duration;
 
         totals.scheduled++;
         if (!subjectStats[s.subject]) {
-          subjectStats[s.subject] = { scheduled: 0, present: 0, absent: 0, leave: 0 };
+          subjectStats[s.subject] = { scheduled: 0, present: 0, absent: 0, leave: 0, totalMinutes: 0 };
         }
         subjectStats[s.subject].scheduled++;
 
         if (status === 'present') {
           totals.present++;
           subjectStats[s.subject].present++;
+          totals.totalMinutes += classDuration;
+          subjectStats[s.subject].totalMinutes += classDuration;
         } else if (status === 'absent') {
           totals.absent++;
           subjectStats[s.subject].absent++;
@@ -187,10 +202,11 @@ export default function MonthlyReportView({
       const pct = data.totals.scheduled
         ? Math.round((100 * data.totals.present) / data.totals.scheduled)
         : 0;
+      const totalTimeStr = formatHoursAndMinutes(data.totals.totalMinutes);
 
       lines.push(`${getFirstName(student.name)} — ${monthName} Lesson Report${subj ? ` (${subj})` : ''}`);
       lines.push(
-        `Scheduled: ${data.totals.scheduled}  |  Present: ${data.totals.present}  |  Absent: ${data.totals.absent}  |  On Leave: ${data.totals.leave}  |  Completion: ${pct}%`
+        `Scheduled: ${data.totals.scheduled}  |  Present: ${data.totals.present}  |  Absent: ${data.totals.absent}  |  On Leave: ${data.totals.leave}  |  Total Time Taken: ${totalTimeStr}  |  Completion: ${pct}%`
       );
       lines.push('');
       
@@ -198,7 +214,8 @@ export default function MonthlyReportView({
         .sort()
         .forEach((subjName) => {
           const st = data.subjectStats[subjName];
-          lines.push(`${subjName}: ${st.present}/${st.scheduled} taken (${st.absent} absent, ${st.leave} leave)`);
+          const stTimeStr = formatHoursAndMinutes(st.totalMinutes);
+          lines.push(`${subjName}: ${st.present}/${st.scheduled} taken (${st.absent} absent, ${st.leave} leave · Total Time: ${stTimeStr})`);
         });
 
       lines.push('');
@@ -395,7 +412,7 @@ export default function MonthlyReportView({
                 </div>
 
                 {/* Core Stats Row */}
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
                   <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 text-center">
                     <div className="serif-title font-bold text-2xl text-[var(--ink)]">{reportData.totals.scheduled}</div>
                     <div className="text-[10px] font-bold text-[var(--ink-faint)] uppercase tracking-wider mt-1">Scheduled</div>
@@ -412,7 +429,11 @@ export default function MonthlyReportView({
                     <div className="serif-title font-bold text-2xl text-[var(--science)]">{reportData.totals.leave}</div>
                     <div className="text-[10px] font-bold text-[var(--ink-faint)] uppercase tracking-wider mt-1">On Leave</div>
                   </div>
-                  <div className="bg-[var(--accent-soft)] p-4 rounded-lg border border-[var(--accent)] col-span-2 md:col-span-1 text-center">
+                  <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 text-center">
+                    <div className="serif-title font-bold text-2xl text-[var(--math)]">{formatHoursAndMinutes(reportData.totals.totalMinutes)}</div>
+                    <div className="text-[10px] font-bold text-[var(--ink-faint)] uppercase tracking-wider mt-1">Total Time Taken</div>
+                  </div>
+                  <div className="bg-[var(--accent-soft)] p-4 rounded-lg border border-[var(--accent)] text-center">
                     <div className="serif-title font-bold text-2xl text-[var(--accent-dark)]">{pct}%</div>
                     <div className="text-[10px] font-bold text-[var(--accent-dark)] uppercase tracking-wider mt-1">Completion</div>
                   </div>
@@ -435,6 +456,7 @@ export default function MonthlyReportView({
                           <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Present</th>
                           <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Absent</th>
                           <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">On Leave</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Time</th>
                           <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Completion</th>
                         </tr>
                       </thead>
@@ -455,6 +477,7 @@ export default function MonthlyReportView({
                                 <td className="px-4 py-2 text-slate-600">{st.present}</td>
                                 <td className="px-4 py-2 text-slate-600">{st.absent}</td>
                                 <td className="px-4 py-2 text-slate-600">{st.leave}</td>
+                                <td className="px-4 py-2 text-slate-600 font-medium">{formatHoursAndMinutes(st.totalMinutes)}</td>
                                 <td className="px-4 py-2 font-bold text-slate-800">{sPct}%</td>
                               </tr>
                             );
