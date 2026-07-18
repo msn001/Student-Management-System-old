@@ -351,16 +351,16 @@ export default function MonthlyReportView({
 
                 dayRows.push(
                   <tr key={`${dateStr}-${idx}`} className="hover:bg-slate-50/50">
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-700 w-[8%] min-w-[60px]">{formatDateNice(dateObj)}</td>
-                    <td className="px-4 py-3 whitespace-nowrap w-[10%] min-w-[75px]">
-                      <span className={`inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full ${getSubjectClass(c.subject)}`}>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-700 w-[11%] min-w-[60px]">{formatDateNice(dateObj)}</td>
+                    <td className="px-4 py-3 w-[14%] min-w-[85px]">
+                      <span className={`inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full ${getSubjectClass(c.subject)} whitespace-normal text-center`}>
                         {c.subject}
                       </span>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap w-[8%] min-w-[60px]">{getStatusTag(c.status)}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600 w-[6%] min-w-[45px]">{durationText}</td>
-                    <td className="px-4 py-3 text-sm text-slate-700 whitespace-pre-wrap w-[43%] min-w-[200px] max-w-sm">{lessonText}</td>
-                    <td className="px-4 py-3 text-sm text-slate-500 whitespace-pre-wrap w-[25%] min-w-[120px] max-w-xs">{c.remarks || '—'}</td>
+                    <td className="px-4 py-3 whitespace-nowrap w-[11%] min-w-[65px]">{getStatusTag(c.status)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600 w-[8%] min-w-[50px]">{durationText}</td>
+                    <td className="px-4 py-3 text-sm text-slate-700 whitespace-pre-wrap w-[36%] min-w-[180px]">{lessonText}</td>
+                    <td className="px-4 py-3 text-sm text-slate-500 whitespace-pre-wrap w-[20%] min-w-[100px]">{c.remarks || '—'}</td>
                   </tr>
                 );
               });
@@ -458,15 +458,15 @@ export default function MonthlyReportView({
                     </div>
                   ) : (
                     <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                      <table className="min-w-full divide-y divide-slate-200 text-xs sm:text-sm">
+                      <table className="w-full table-fixed divide-y divide-slate-200 text-xs sm:text-sm">
                         <thead className="bg-slate-50">
                           <tr>
-                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[8%] min-w-[60px]">Date</th>
-                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[10%] min-w-[75px]">Subject</th>
-                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[8%] min-w-[60px]">Attendance</th>
-                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[6%] min-w-[45px]">Duration</th>
-                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[43%] min-w-[200px]">Lesson / Note</th>
-                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[25%] min-w-[120px]">Remarks / Homework</th>
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[11%] min-w-[60px]">Date</th>
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[14%] min-w-[85px]">Subject</th>
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[11%] min-w-[65px]">Attendance</th>
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[8%] min-w-[50px]">Duration</th>
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[36%] min-w-[180px]">Lesson / Note</th>
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[20%] min-w-[100px]">Remarks / Homework</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-slate-100">{dayRows}</tbody>
