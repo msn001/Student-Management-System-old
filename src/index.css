@@ -82,6 +82,10 @@ input:focus, select:focus, textarea:focus {
 
 /* Print Overrides */
 @media print {
+  @page {
+    margin: 0.3in !important;
+  }
+
   /* Reset the entire html and body scroll parameters to allow standard print pagination */
   html, body {
     background-color: #ffffff !important;
