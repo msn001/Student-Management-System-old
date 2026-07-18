@@ -355,14 +355,7 @@ export default function MonthlyReportView({
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap w-[11%] min-w-[70px]">{getStatusTag(c.status)}</td>
                     <td className="px-4 py-3 text-sm text-slate-600 w-[13%] min-w-[85px]">
-                      {c.actualDuration !== null && c.actualDuration !== undefined ? (
-                        <span>{c.actualDuration} min</span>
-                      ) : (
-                        <div className="flex flex-col leading-tight">
-                          <span>{c.scheduledDuration} min</span>
-                          <span className="text-[10px] text-slate-400 font-normal print:text-[9px]">(scheduled)</span>
-                        </div>
-                      )}
+                      <span>{c.actualDuration !== null && c.actualDuration !== undefined ? c.actualDuration : c.scheduledDuration} min</span>
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-700 whitespace-pre-wrap w-[32%] min-w-[180px]">{lessonText}</td>
                     <td className="px-4 py-3 text-sm text-slate-500 whitespace-pre-wrap w-[22%] min-w-[120px]">{c.remarks || '—'}</td>
