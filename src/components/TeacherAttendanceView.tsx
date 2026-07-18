@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AttendanceService, AttendanceTeacher, AttendanceRecord } from '../lib/attendanceService';
 import { Clock, Fingerprint, Calendar, ClipboardList, RefreshCw, AlertTriangle, Printer, LogIn, ChevronRight, User } from 'lucide-react';
+import { formatTimeToAMPM } from '../lib/utils';
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -290,7 +291,7 @@ export default function TeacherAttendanceView() {
                   <div className="text-6xl animate-bounce">{scanResult.icon}</div>
                   <div className="text-2xl font-black text-slate-800">{scanResult.name}</div>
                   {scanResult.time && (
-                    <div className="font-mono text-lg font-bold text-slate-500">{scanResult.time}</div>
+                    <div className="font-mono text-lg font-bold text-slate-500">{formatTimeToAMPM(scanResult.time)}</div>
                   )}
                   <span
                     className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider ${
@@ -414,7 +415,7 @@ export default function TeacherAttendanceView() {
                               {teacher ? teacher.name : rec.teacherId}
                             </div>
                             <div className="font-mono text-[11px] text-slate-500 mt-0.5">
-                              {rec.checkIn} {isComplete ? `→ ${rec.checkOut}` : ' (active)'}
+                              {formatTimeToAMPM(rec.checkIn)} {isComplete ? `→ ${formatTimeToAMPM(rec.checkOut)}` : ' (active)'}
                             </div>
                           </div>
                           <span
@@ -609,8 +610,8 @@ export default function TeacherAttendanceView() {
                                     <tr key={`${r.id}-${subIdx}`} className="border-b border-slate-100 hover:bg-slate-50/50">
                                       <td className="p-3 pl-5 font-mono text-slate-700 font-semibold">{String(dNum).padStart(2, '0')}</td>
                                       <td className="p-3 text-slate-500">{dayName}</td>
-                                      <td className="p-3 text-slate-800 font-medium">{r.checkIn || '—'}</td>
-                                      <td className="p-3 text-slate-800 font-medium">{r.checkOut || '—'}</td>
+                                      <td className="p-3 text-slate-800 font-medium">{r.checkIn ? formatTimeToAMPM(r.checkIn) : '—'}</td>
+                                      <td className="p-3 text-slate-800 font-medium">{r.checkOut ? formatTimeToAMPM(r.checkOut) : '—'}</td>
                                       <td className="p-3 font-mono text-slate-600 font-medium">{hoursVal}</td>
                                       <td className="p-3 pr-5">
                                         <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${

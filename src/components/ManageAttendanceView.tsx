@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AttendanceService, AttendanceTeacher, AttendanceRecord } from '../lib/attendanceService';
 import { UserCheck, Plus, Trash2, Edit2, X, Check, AlertTriangle, Printer, User, QrCode, ClipboardList } from 'lucide-react';
+import { formatTimeToAMPM } from '../lib/utils';
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -604,8 +605,8 @@ export default function ManageAttendanceView() {
                                     <tr key={`${r.id}-${subIdx}`} className="border-b border-slate-100 hover:bg-slate-50/50">
                                       <td className="p-3 pl-5 font-mono text-slate-700 font-semibold">{String(dNum).padStart(2, '0')}</td>
                                       <td className="p-3 text-slate-500">{dayName}</td>
-                                      <td className="p-3 text-slate-800 font-medium">{r.checkIn || '—'}</td>
-                                      <td className="p-3 text-slate-800 font-medium">{r.checkOut || '—'}</td>
+                                      <td className="p-3 text-slate-800 font-medium">{r.checkIn ? formatTimeToAMPM(r.checkIn) : '—'}</td>
+                                      <td className="p-3 text-slate-800 font-medium">{r.checkOut ? formatTimeToAMPM(r.checkOut) : '—'}</td>
                                       <td className="p-3 font-mono text-slate-600 font-medium">{hoursVal}</td>
                                       <td className="p-3 pr-5 text-right flex items-center justify-end gap-2 h-11">
                                         <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
