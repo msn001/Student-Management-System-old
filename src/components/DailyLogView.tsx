@@ -1,8 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { ClassSlot, Student, Teacher, LessonEntry } from '../types';
 import { StorageService } from '../lib/storage';
-import { Check, Info } from 'lucide-react';
+import { 
+  Check, 
+  Info, 
+  ChevronLeft, 
+  ChevronRight, 
+  Sparkles, 
+  BookOpen, 
+  Clock, 
+  Calendar, 
+  User, 
+  Save, 
+  AlertCircle, 
+  HelpCircle,
+  FileSpreadsheet
+} from 'lucide-react';
 import { formatTimeToAMPM, getSlotsForDate } from '../lib/utils';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface DailyLogViewProps {
   slots: ClassSlot[];
@@ -19,6 +34,21 @@ interface DailyLogViewProps {
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+const getSubjectDotColor = (sub: string) => {
+  switch (sub) {
+    case 'Math':
+      return '#3b82f6'; // Blue
+    case 'Science':
+      return '#10b981'; // Green
+    case 'English':
+      return '#8b5cf6'; // Purple
+    case 'Quran / Islamic Studies':
+      return '#14b8a6'; // Teal
+    default:
+      return '#6b7280'; // Gray
+  }
+};
+
 export default function DailyLogView({
   slots,
   students,
@@ -33,6 +63,23 @@ export default function DailyLogView({
 }: DailyLogViewProps) {
   const [filterTeacher, setFilterTeacher] = useState('');
   const [activeDate, setActiveDate] = useState(logDate);
+  const [activeCardIndex, setActiveCardIndex] = useState(0);
+  const [dir, setDir] = useState<number>(0); // 1 for forward, -1 for backward
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+  };
+
+  // Automatically clear toast after 3 seconds
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => {
+        setToast(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   // Buffer date string to update when parent date changes
   useEffect(() => {
@@ -61,6 +108,45 @@ export default function DailyLogView({
       if (filterTeacher && s.teacherId !== filterTeacher) return false;
       return true;
     });
+
+  // Reset active index when date or filter changes
+  useEffect(() => {
+    setActiveCardIndex(0);
+    setDir(0);
+  }, [activeDate, filterTeacher]);
+
+  // Keyboard navigation support
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in a text field
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.tagName === 'SELECT')
+      ) {
+        return;
+      }
+
+      if (e.key === 'ArrowLeft') {
+        if (activeCardIndex > 0) {
+          setDir(-1);
+          setActiveCardIndex((prev) => prev - 1);
+        }
+      } else if (e.key === 'ArrowRight') {
+        if (activeCardIndex < daySlots.length - 1) {
+          setDir(1);
+          setActiveCardIndex((prev) => prev + 1);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeCardIndex, daySlots.length]);
 
   const getEffectiveTeacherId = (slot: ClassSlot) => {
     const subsForSlot = monthSubs[slot.id];
@@ -99,7 +185,7 @@ export default function DailyLogView({
     remarks: string
   ) => {
     if (!status) {
-      alert('Please select attendance status (Present, Absent, or On Leave) before saving.');
+      showToast('Please select attendance status (Present, Absent, or On Leave) before saving.', 'error');
       return;
     }
 
@@ -127,7 +213,9 @@ export default function DailyLogView({
 
     onUpdateLogs(mKey, updatedLogs);
     await StorageService.saveMonthLogs(mKey, updatedLogs);
-    alert('Lesson entry saved successfully!');
+    
+    const student = students.find((st) => st.id === slot.studentId);
+    showToast(`Lesson entry for ${student?.name || 'student'} saved successfully!`, 'success');
   };
 
   const getSubjectClass = (sub: string) => {
@@ -145,15 +233,82 @@ export default function DailyLogView({
     }
   };
 
+  // Calculate stats for the progress bar
+  const completedCount = daySlots.reduce((acc, s) => {
+    const hasLog = monthLogs[s.id]?.[activeDate]?.status;
+    return hasLog ? acc + 1 : acc;
+  }, 0);
+  const completionPercentage = daySlots.length > 0 ? Math.round((completedCount / daySlots.length) * 100) : 0;
+
+  // Next and previous index transitions
+  const handlePrev = () => {
+    if (activeCardIndex > 0) {
+      setDir(-1);
+      setActiveCardIndex(activeCardIndex - 1);
+    }
+  };
+
+  const handleNext = () => {
+    if (activeCardIndex < daySlots.length - 1) {
+      setDir(1);
+      setActiveCardIndex(activeCardIndex + 1);
+    }
+  };
+
+  // Variants for direction-aware slide animations
+  const slideVariants = {
+    enter: (direction: number) => ({
+      x: direction > 0 ? 120 : direction < 0 ? -120 : 0,
+      opacity: 0,
+      scale: 0.98,
+    }),
+    center: {
+      x: 0,
+      opacity: 1,
+      scale: 1,
+    },
+    exit: (direction: number) => ({
+      x: direction > 0 ? -120 : direction < 0 ? 120 : 0,
+      opacity: 0,
+      scale: 0.98,
+    }),
+  };
+
   return (
-    <div>
+    <div className="relative">
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, x: '-50%', scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, x: '-50%', scale: 1 }}
+            exit={{ opacity: 0, y: -20, x: '-50%', scale: 0.95 }}
+            className={`fixed top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-4.5 py-3 rounded-xl shadow-lg border text-xs font-bold tracking-tight ${
+              toast.type === 'error'
+                ? 'bg-rose-50 text-rose-800 border-rose-200 shadow-rose-100/40'
+                : 'bg-emerald-50 text-emerald-800 border-emerald-200 shadow-emerald-100/40'
+            }`}
+          >
+            {toast.type === 'error' ? (
+              <AlertCircle size={15} className="text-rose-600 stroke-[2.5]" />
+            ) : (
+              <Check size={15} className="text-emerald-600 stroke-[2.5]" />
+            )}
+            {toast.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Date & Teacher Selector */}
-      <div className="flex flex-wrap gap-4 mb-6 items-center bg-slate-50 p-4 rounded-xl border border-[var(--line)]">
+      <div className="flex flex-wrap gap-4 mb-6 items-center bg-slate-50 p-4 rounded-xl border border-[var(--line)] shadow-2xs">
         <div>
-          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Log Date</label>
+          <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
+            <Calendar size={13} className="text-slate-400" />
+            Log Date
+          </label>
           <input
             type="date"
-            className="px-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:outline-none focus:border-[var(--accent)] text-sm"
+            className="px-3 py-1.5 border border-[var(--line-strong)] bg-white rounded-lg focus:outline-none focus:border-[var(--accent)] text-sm font-semibold"
             value={activeDate}
             onChange={(e) => {
               setActiveDate(e.target.value);
@@ -163,9 +318,12 @@ export default function DailyLogView({
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Filter by Regular Teacher</label>
+          <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
+            <User size={13} className="text-slate-400" />
+            Filter by Regular Teacher
+          </label>
           <select
-            className="px-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:outline-none focus:border-[var(--accent)] text-sm"
+            className="px-3 py-1.5 border border-[var(--line-strong)] bg-white rounded-lg focus:outline-none focus:border-[var(--accent)] text-sm font-semibold"
             value={filterTeacher}
             onChange={(e) => setFilterTeacher(e.target.value)}
           >
@@ -182,47 +340,209 @@ export default function DailyLogView({
         </div>
       </div>
 
-      {/* Cards List */}
-      <div className="space-y-6">
-        {daySlots.length === 0 ? (
-          <div className="text-center py-12 border-2 border-dashed border-[var(--line-strong)] rounded-xl text-slate-400">
-            No classes scheduled on <strong>{DAY_NAMES[dateObj.getDay()]}</strong>
-            {filterTeacher ? ' for this teacher.' : '.'}
-          </div>
-        ) : (
-          daySlots.map((s) => {
-            const student = students.find((st) => st.id === s.studentId);
-            const entry = (monthLogs[s.id] && monthLogs[s.id][activeDate]) || {
-              status: '',
-              actualDuration: s.duration,
-              lessonSource: '',
-              lessonDetail: '',
-              content: '',
-              remarks: '',
-            };
-
-            const effTeacherId = getEffectiveTeacherId(s);
-            const isSub = effTeacherId !== s.teacherId;
-
-            // Log state helpers
-            return (
-              <LogEntryCard
-                key={s.id}
-                slot={s}
-                studentName={student?.name || 'Removed Student'}
-                student={student}
-                entry={entry}
-                teachers={teachers}
-                effTeacherId={effTeacherId}
-                isSub={isSub}
-                getSubjectClass={getSubjectClass}
-                onSubstituteChange={handleSubstituteChange}
-                onSave={handleSaveEntry}
+      {daySlots.length === 0 ? (
+        <div className="text-center py-16 border-2 border-dashed border-[var(--line-strong)] rounded-xl text-slate-400 bg-slate-50/50">
+          <BookOpen className="mx-auto h-12 w-12 text-slate-300 mb-3" />
+          <p className="text-sm font-medium">No classes scheduled on <strong>{DAY_NAMES[dateObj.getDay()]}</strong></p>
+          <p className="text-xs text-slate-400 mt-1">{filterTeacher ? 'Try selecting "All teachers" or changing the date.' : 'Please add classes or change the date.'}</p>
+        </div>
+      ) : (
+        <>
+          {/* Progress Completion Indicator */}
+          <div className="mb-6 bg-slate-50/70 p-4 rounded-xl border border-slate-200/60 shadow-2xs">
+            <div className="flex justify-between items-center mb-2 flex-wrap gap-2">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                <FileSpreadsheet size={14} className="text-slate-400" />
+                Lesson Log Completion
+              </span>
+              <span className="text-xs font-bold text-slate-700 bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-100">
+                {completedCount} of {daySlots.length} Classes Completed ({completionPercentage}%)
+              </span>
+            </div>
+            <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden border border-slate-200/20">
+              <div 
+                className="bg-emerald-500 h-full transition-all duration-500 rounded-full" 
+                style={{ width: `${completionPercentage}%` }}
               />
-            );
-          })
-        )}
-      </div>
+            </div>
+          </div>
+
+          {/* Horizontal Quick-Jump Deck / Student Timeline */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-3 px-1">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles size={14} className="text-[var(--accent)]" /> 
+                Today's Student Deck
+              </h3>
+              <span className="hidden md:flex items-center gap-1 text-[11px] font-semibold text-slate-400 bg-slate-50 border border-slate-200 px-2.5 py-0.5 rounded-full">
+                <HelpCircle size={11} />
+                Arrow keys &larr; &rarr; to slide
+              </span>
+            </div>
+            
+            <div className="flex gap-2.5 overflow-x-auto pb-3 pt-1 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+              {daySlots.map((s, idx) => {
+                const student = students.find((st) => st.id === s.studentId);
+                const name = student?.name || 'Removed Student';
+                const firstName = name.split(' ')[0];
+                
+                const entry: any = monthLogs[s.id]?.[activeDate] || {};
+                const status = entry.status; // 'present' | 'absent' | 'leave' | ''
+                
+                const isActive = idx === activeCardIndex;
+                
+                let statusBadgeClass = 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50';
+                let statusDotColor = 'bg-slate-300';
+                
+                if (status === 'present') {
+                  statusBadgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200/50 hover:bg-emerald-100/50';
+                  statusDotColor = 'bg-emerald-500';
+                } else if (status === 'absent') {
+                  statusBadgeClass = 'bg-rose-50 text-rose-700 border-rose-200/50 hover:bg-rose-100/50';
+                  statusDotColor = 'bg-rose-500';
+                } else if (status === 'leave') {
+                  statusBadgeClass = 'bg-sky-50 text-sky-700 border-sky-200/50 hover:bg-sky-100/50';
+                  statusDotColor = 'bg-sky-500';
+                }
+                
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => {
+                      setDir(idx > activeCardIndex ? 1 : -1);
+                      setActiveCardIndex(idx);
+                    }}
+                    className={`flex-shrink-0 flex items-center gap-3 px-4 py-3 rounded-xl border text-xs font-medium transition-all duration-200 shadow-3xs cursor-pointer ${
+                      isActive 
+                        ? 'border-[var(--accent)] bg-slate-950 text-white ring-3 ring-[var(--accent)]/15 scale-[1.02]' 
+                        : `${statusBadgeClass} text-slate-700 border-slate-200 hover:border-slate-300`
+                    }`}
+                  >
+                    {/* Subject / Status Indicator Dot */}
+                    <span 
+                      className={`w-2.5 h-2.5 rounded-full ${status ? statusDotColor : ''}`} 
+                      style={!status ? { backgroundColor: getSubjectDotColor(s.subject) } : undefined} 
+                    />
+                    
+                    <div className="text-left">
+                      <div className={`font-bold ${isActive ? 'text-white' : 'text-slate-800'}`}>{firstName}</div>
+                      <div className={`text-[10px] mt-0.5 font-medium ${isActive ? 'text-slate-300' : 'text-slate-400'}`}>
+                        {formatTimeToAMPM(s.time)}
+                      </div>
+                    </div>
+                    
+                    {/* Tiny visual badge with shortcode */}
+                    {status && (
+                      <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                        status === 'present' ? 'bg-emerald-500 text-white' :
+                        status === 'absent' ? 'bg-rose-500 text-white' : 'bg-sky-500 text-white'
+                      }`}>
+                        {status === 'present' ? 'P' : status === 'absent' ? 'A' : 'L'}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Interactive Slide Deck Layout */}
+          <div className="relative">
+            {/* Left Chevron (Desktop-only absolute, responsive layout handles mobile spacing) */}
+            <button
+              onClick={handlePrev}
+              disabled={activeCardIndex === 0}
+              className="absolute left-[-24px] top-[40%] -translate-y-1/2 z-10 hidden lg:flex p-3 rounded-full bg-white border border-slate-200 shadow-md hover:shadow-lg hover:scale-110 active:scale-95 disabled:opacity-30 disabled:pointer-events-none text-slate-600 hover:text-slate-900 transition-all duration-200 cursor-pointer"
+              title="Previous Student"
+            >
+              <ChevronLeft size={22} className="stroke-[2.5]" />
+            </button>
+
+            {/* Active Sliding Student Card Window */}
+            <div className="overflow-hidden py-1 px-0.5">
+              <AnimatePresence mode="wait" custom={dir}>
+                <motion.div
+                  key={daySlots[activeCardIndex].id}
+                  custom={dir}
+                  variants={slideVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{ duration: 0.25, ease: 'easeInOut' }}
+                >
+                  {(() => {
+                    const s = daySlots[activeCardIndex];
+                    const student = students.find((st) => st.id === s.studentId);
+                    const entry = monthLogs[s.id]?.[activeDate] || {
+                      status: '',
+                      actualDuration: s.duration,
+                      lessonSource: '',
+                      lessonDetail: '',
+                      content: '',
+                      remarks: '',
+                    };
+                    const effTeacherId = getEffectiveTeacherId(s);
+                    const isSub = effTeacherId !== s.teacherId;
+
+                    return (
+                      <LogEntryCard
+                        slot={s}
+                        studentName={student?.name || 'Removed Student'}
+                        student={student}
+                        entry={entry}
+                        teachers={teachers}
+                        effTeacherId={effTeacherId}
+                        isSub={isSub}
+                        getSubjectClass={getSubjectClass}
+                        onSubstituteChange={handleSubstituteChange}
+                        onSave={handleSaveEntry}
+                      />
+                    );
+                  })()}
+                </motion.div>
+              </AnimatePresence>
+            </div>
+
+            {/* Right Chevron (Desktop-only absolute) */}
+            <button
+              onClick={handleNext}
+              disabled={activeCardIndex === daySlots.length - 1}
+              className="absolute right-[-24px] top-[40%] -translate-y-1/2 z-10 hidden lg:flex p-3 rounded-full bg-white border border-slate-200 shadow-md hover:shadow-lg hover:scale-110 active:scale-95 disabled:opacity-30 disabled:pointer-events-none text-slate-600 hover:text-slate-900 transition-all duration-200 cursor-pointer"
+              title="Next Student"
+            >
+              <ChevronRight size={22} className="stroke-[2.5]" />
+            </button>
+
+            {/* Responsive Bottom Carousel Controls bar (Flawless on Mobile + Tablet) */}
+            <div className="mt-5 flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+              <button
+                onClick={handlePrev}
+                disabled={activeCardIndex === 0}
+                className="flex items-center gap-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-colors shadow-2xs cursor-pointer"
+              >
+                <ChevronLeft size={15} /> Prev
+              </button>
+
+              <div className="text-center">
+                <span className="text-xs font-bold text-slate-600">
+                  Student <span className="text-slate-950 font-extrabold">{activeCardIndex + 1}</span> of <span className="text-slate-950 font-extrabold">{daySlots.length}</span>
+                </span>
+                <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">
+                  {students.find((st) => st.id === daySlots[activeCardIndex].studentId)?.name || 'Removed Student'}
+                </p>
+              </div>
+
+              <button
+                onClick={handleNext}
+                disabled={activeCardIndex === daySlots.length - 1}
+                className="flex items-center gap-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-colors shadow-2xs cursor-pointer"
+              >
+                Next <ChevronRight size={15} />
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -240,7 +560,6 @@ function LogEntryCard({
   onSubstituteChange,
   onSave,
 }: {
-  key?: string;
   slot: ClassSlot;
   studentName: string;
   student?: Student;
@@ -291,12 +610,12 @@ function LogEntryCard({
   const isQuranClass = slot.subject === 'Quran / Islamic Studies';
 
   return (
-    <div className={`bg-[#FBFCFD] p-6 rounded-xl border border-[var(--line)] shadow-sm ${getBorderColor()}`}>
+    <div className={`bg-[#FBFCFD] p-6 rounded-xl border border-[var(--line)] shadow-xs ${getBorderColor()} transition-colors duration-300`}>
       {/* Header */}
       <div className="flex justify-between items-start flex-wrap gap-2 border-b border-dashed border-slate-200 pb-3 mb-4">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-bold text-base text-[var(--ink)]">{studentName}</span>
+            <span className="font-bold text-lg text-[var(--ink)]">{studentName}</span>
             <span className={`inline-block px-2.5 py-0.5 text-xs font-semibold rounded-full ${getSubjectClass(slot.subject)}`}>
               {slot.subject}
             </span>
@@ -304,7 +623,7 @@ function LogEntryCard({
 
           {/* Student Connection Links */}
           {(student?.zoom || student?.teamsId || student?.googleMeet) && (
-            <div className="flex flex-wrap gap-2 items-center mt-2">
+            <div className="flex flex-wrap gap-2 items-center mt-2.5">
               {student.teamsId && (
                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
                   <span className="text-[9px] font-bold uppercase opacity-75">Teams:</span>
@@ -334,16 +653,16 @@ function LogEntryCard({
             </div>
           )}
         </div>
-        <div className="text-xs text-[var(--ink-soft)] font-medium">
-          Scheduled: <strong>{formatTimeToAMPM(slot.time)}</strong> &middot; {slot.duration} min
+        <div className="text-xs text-[var(--ink-soft)] font-medium bg-slate-100/60 px-2.5 py-1 rounded-lg border border-slate-200/40">
+          Scheduled: <strong className="text-slate-900">{formatTimeToAMPM(slot.time)}</strong> &middot; <span className="text-slate-900 font-bold">{slot.duration}m</span>
         </div>
       </div>
 
       {/* Substitute controls */}
-      <div className="flex items-center gap-3 flex-wrap mb-4 bg-slate-50 p-2.5 rounded border border-slate-200">
+      <div className="flex items-center gap-3 flex-wrap mb-4 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
         <label className="text-xs font-bold text-slate-600 uppercase">Teacher Today</label>
         <select
-          className="text-xs px-2 py-1 border border-slate-300 bg-white rounded focus:outline-none focus:border-[var(--accent)]"
+          className="text-xs px-2.5 py-1 border border-slate-300 bg-white rounded-lg focus:outline-none focus:border-[var(--accent)] font-semibold text-slate-700"
           value={isSub ? effTeacherId : ''}
           onChange={(e) => onSubstituteChange(slot.id, e.target.value)}
         >
@@ -360,7 +679,7 @@ function LogEntryCard({
             ))}
         </select>
         {isSub && (
-          <span className="inline-flex items-center text-[10px] bg-[var(--science-soft)] text-[var(--science)] font-semibold px-2 py-0.5 rounded-full">
+          <span className="inline-flex items-center text-[10px] bg-[var(--science-soft)] text-[var(--science)] font-bold px-2.5 py-0.5 rounded-full">
             Substitute Covering Today
           </span>
         )}
@@ -371,7 +690,7 @@ function LogEntryCard({
         <div>
           <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Attendance</label>
           <select
-            className="w-full px-3 py-1.5 border border-slate-300 bg-white rounded text-sm focus:outline-none focus:border-[var(--accent)] font-medium"
+            className="w-full px-3 py-1.5 border border-slate-300 bg-white rounded-lg text-sm focus:outline-none focus:border-[var(--accent)] font-bold text-slate-700"
             value={status}
             onChange={(e) => setStatus(e.target.value as any)}
           >
@@ -388,7 +707,7 @@ function LogEntryCard({
             type="number"
             min="0"
             step="5"
-            className="w-full px-3 py-1.5 border border-slate-300 bg-white rounded text-sm focus:outline-none focus:border-[var(--accent)]"
+            className="w-full px-3 py-1.5 border border-slate-300 bg-white rounded-lg text-sm focus:outline-none focus:border-[var(--accent)] font-semibold text-slate-700"
             value={duration}
             onChange={(e) => setDuration(Number(e.target.value))}
           />
@@ -397,11 +716,11 @@ function LogEntryCard({
 
       {/* Special Quran fields */}
       {isQuranClass && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 p-3 bg-teal-50/30 rounded border border-teal-100">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 p-3 bg-teal-50/30 rounded-lg border border-teal-100">
           <div>
             <label className="block text-xs font-bold text-[var(--quran)] uppercase mb-1">Lesson From</label>
             <select
-              className="w-full px-3 py-1.5 border border-teal-200 bg-white rounded text-sm focus:outline-none focus:border-[var(--quran)]"
+              className="w-full px-3 py-1.5 border border-teal-200 bg-white rounded-lg text-sm focus:outline-none focus:border-[var(--quran)] font-semibold text-slate-700"
               value={source}
               onChange={(e) => setSource(e.target.value)}
             >
@@ -416,7 +735,7 @@ function LogEntryCard({
             </label>
             <input
               type="text"
-              className="w-full px-3 py-1.5 border border-teal-200 bg-white rounded text-sm focus:outline-none focus:border-[var(--quran)]"
+              className="w-full px-3 py-1.5 border border-teal-200 bg-white rounded-lg text-sm focus:outline-none focus:border-[var(--quran)] font-semibold text-slate-700"
               placeholder="e.g. Page 12-14 or Surah Al-Baqarah 1-10"
               value={detail}
               onChange={(e) => setDetail(e.target.value)}
@@ -431,7 +750,7 @@ function LogEntryCard({
           <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Lesson Taught / Notes</label>
           <textarea
             rows={2}
-            className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:border-[var(--accent)]"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-[var(--accent)] text-slate-700 font-medium"
             placeholder="What was worked on during the class? (e.g. Worked on fractions, page 42)"
             value={content}
             onChange={(e) => setContent(e.target.value)}
@@ -442,7 +761,7 @@ function LogEntryCard({
           <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Teacher's Remarks / Homework</label>
           <textarea
             rows={2}
-            className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:border-[var(--accent)]"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-[var(--accent)] text-slate-700 font-medium"
             placeholder="Specific remarks, struggles, or homework assigned for next time…"
             value={remarks}
             onChange={(e) => setRemarks(e.target.value)}
@@ -454,12 +773,12 @@ function LogEntryCard({
       <div className="flex items-center gap-3 flex-wrap">
         <button
           onClick={() => onSave(slot.id, status, duration, source, detail, content, remarks)}
-          className="px-4 py-2 bg-[var(--accent)] text-white text-xs font-bold rounded hover:bg-[var(--accent-dark)] cursor-pointer flex items-center gap-1 shadow-sm"
+          className="px-4.5 py-2.5 bg-[var(--accent)] text-white text-xs font-bold rounded-lg hover:bg-[var(--accent-dark)] cursor-pointer flex items-center gap-1.5 shadow-xs transition-colors duration-200"
         >
-          <Check size={14} /> Save entry
+          <Check size={14} className="stroke-[2.5]" /> Save entry
         </button>
         {entry.loggedBy && (
-          <span className="inline-flex items-center gap-1 text-[11px] text-[var(--ink-faint)] font-mono">
+          <span className="inline-flex items-center gap-1 text-[11px] text-[var(--ink-faint)] font-mono font-semibold">
             <Info size={12} /> Last saved by {entry.loggedBy}
           </span>
         )}
