@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ClassSlot, Student, Teacher } from '../types';
 import { StorageService } from '../lib/storage';
-import { Plus, Edit, Trash2, Search, X } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, X, Check, ChevronDown } from 'lucide-react';
 import { getStudentDisplayName, formatTimeToAMPM } from '../lib/utils';
 
 interface TimetableViewProps {
@@ -30,6 +30,48 @@ export default function TimetableView({ slots, students, teachers, onUpdateSlots
   const [subjectOther, setSubjectOther] = useState('');
   const [teacherId, setTeacherId] = useState('');
   const [duration, setDuration] = useState(30);
+
+  // Student Search states
+  const [studentSearchQuery, setStudentSearchQuery] = useState('');
+  const [isStudentDropdownOpen, setIsStudentDropdownOpen] = useState(false);
+  const studentDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (studentDropdownRef.current && !studentDropdownRef.current.contains(event.target as Node)) {
+        setIsStudentDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const selectedStudent = students.find((s) => s.id === studentId);
+
+  const sortedStudents = students
+    .slice()
+    .sort((a, b) => getStudentDisplayName(a).localeCompare(getStudentDisplayName(b)));
+
+  const filteredStudents = sortedStudents.filter((s) =>
+    getStudentDisplayName(s).toLowerCase().includes(studentSearchQuery.toLowerCase())
+  );
+
+  const handleSelectStudent = (sId: string) => {
+    setStudentId(sId);
+    const s = students.find((item) => item.id === sId);
+    if (s) {
+      setStudentSearchQuery(getStudentDisplayName(s));
+    }
+    setIsStudentDropdownOpen(false);
+  };
+
+  const handleClearStudent = () => {
+    setStudentId('');
+    setStudentSearchQuery('');
+    setIsStudentDropdownOpen(false);
+  };
 
   // Day Selection States
   const [selectedDays, setSelectedDays] = useState<Record<number, boolean>>({});
@@ -175,6 +217,12 @@ export default function TimetableView({ slots, students, teachers, onUpdateSlots
   const handleStartEdit = (slot: ClassSlot) => {
     setEditingSlotId(slot.id);
     setStudentId(slot.studentId);
+    const s = students.find((item) => item.id === slot.studentId);
+    if (s) {
+      setStudentSearchQuery(getStudentDisplayName(s));
+    } else {
+      setStudentSearchQuery('');
+    }
     setTeacherId(slot.teacherId);
     setDuration(slot.duration);
 
@@ -199,6 +247,8 @@ export default function TimetableView({ slots, students, teachers, onUpdateSlots
   const resetForm = () => {
     setEditingSlotId(null);
     setStudentId('');
+    setStudentSearchQuery('');
+    setIsStudentDropdownOpen(false);
     setSubject('Math');
     setSubjectOther('');
     setTeacherId('');
@@ -275,21 +325,74 @@ export default function TimetableView({ slots, students, teachers, onUpdateSlots
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1">Student</label>
-              <select
-                className="w-full px-3 py-2 border border-[var(--line-strong)] rounded bg-white focus:outline-none focus:border-[var(--accent)]"
-                value={studentId}
-                onChange={(e) => setStudentId(e.target.value)}
-              >
-                <option value="">Choose student…</option>
-                {students
-                  .slice()
-                  .sort((a, b) => a.name.localeCompare(b.name))
-                  .map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {getStudentDisplayName(s)}
-                    </option>
-                  ))}
-              </select>
+              <div ref={studentDropdownRef} className="relative w-full">
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none text-slate-400">
+                    <Search size={15} />
+                  </span>
+                  <input
+                    type="text"
+                    className="w-full pl-8 pr-7 py-2 border border-[var(--line-strong)] bg-white rounded focus:outline-none focus:border-[var(--accent)] text-sm placeholder-slate-400"
+                    placeholder="Search student..."
+                    value={isStudentDropdownOpen ? studentSearchQuery : (selectedStudent ? getStudentDisplayName(selectedStudent) : studentSearchQuery)}
+                    onChange={(e) => {
+                      setStudentSearchQuery(e.target.value);
+                      setIsStudentDropdownOpen(true);
+                    }}
+                    onFocus={() => {
+                      setIsStudentDropdownOpen(true);
+                      if (studentId) {
+                        setStudentSearchQuery('');
+                      }
+                    }}
+                  />
+                  {studentId ? (
+                    <button
+                      type="button"
+                      onClick={handleClearStudent}
+                      className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      title="Clear selection"
+                    >
+                      <X size={14} />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsStudentDropdownOpen(!isStudentDropdownOpen)}
+                      className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+                  )}
+                </div>
+
+                {isStudentDropdownOpen && (
+                  <div className="absolute z-50 left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg py-1">
+                    {filteredStudents.length === 0 ? (
+                      <div className="px-3 py-2 text-xs text-slate-400 text-center">
+                        No students found
+                      </div>
+                    ) : (
+                      filteredStudents.map((s) => {
+                        const isSelected = s.id === studentId;
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => handleSelectStudent(s.id)}
+                            className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-slate-50 transition-colors ${
+                              isSelected ? 'bg-slate-50 text-[var(--accent-dark)] font-semibold' : 'text-slate-700'
+                            }`}
+                          >
+                            <span>{getStudentDisplayName(s)}</span>
+                            {isSelected && <Check size={13} className="text-[var(--accent-dark)]" />}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div>
