@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Student, Teacher, ClassSlot, LessonEntry } from '../types';
-import { FileText, Printer, Share2, Clipboard } from 'lucide-react';
+import { FileText, Printer, Share2, Clipboard, Search, ChevronDown, Check, X } from 'lucide-react';
 import { getStudentDisplayName, formatTimeToAMPM, getFirstName } from '../lib/utils';
 
 interface MonthlyReportViewProps {
@@ -35,6 +35,22 @@ export default function MonthlyReportView({
   schoolLogo,
 }: MonthlyReportViewProps) {
   const [selectedStudentId, setSelectedStudentId] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -261,25 +277,104 @@ export default function MonthlyReportView({
     }
   };
 
+  const selectedStudent = students.find((s) => s.id === selectedStudentId);
+
+  const sortedStudents = students
+    .slice()
+    .sort((a, b) => getStudentDisplayName(a).localeCompare(getStudentDisplayName(b)));
+
+  const filteredStudents = sortedStudents.filter((s) =>
+    getStudentDisplayName(s).toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const handleSelectStudent = (studentId: string) => {
+    setSelectedStudentId(studentId);
+    const student = students.find((s) => s.id === studentId);
+    if (student) {
+      setSearchQuery(getStudentDisplayName(student));
+    }
+    setIsDropdownOpen(false);
+  };
+
+  const handleClearStudent = () => {
+    setSelectedStudentId('');
+    setSearchQuery('');
+    setIsDropdownOpen(false);
+  };
+
   return (
     <div>
       {/* Selector Toolbar */}
       <div className="toolbar flex flex-wrap gap-4 mb-6 items-center no-print bg-slate-50 p-4 rounded-xl border border-[var(--line)]">
-        <select
-          className="px-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:outline-none focus:border-[var(--accent)] text-sm"
-          value={selectedStudentId}
-          onChange={(e) => setSelectedStudentId(e.target.value)}
-        >
-          <option value="">Choose a student…</option>
-          {students
-            .slice()
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .map((s) => (
-              <option key={s.id} value={s.id}>
-                {getStudentDisplayName(s)}
-              </option>
-            ))}
-        </select>
+        {/* Searchable Student Dropdown */}
+        <div ref={dropdownRef} className="relative w-64">
+          <div className="relative">
+            <span className="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none text-slate-400">
+              <Search size={15} />
+            </span>
+            <input
+              type="text"
+              className="w-full pl-8 pr-7 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:outline-none focus:border-[var(--accent)] text-sm placeholder-slate-400"
+              placeholder="Search student..."
+              value={isDropdownOpen ? searchQuery : (selectedStudent ? getStudentDisplayName(selectedStudent) : searchQuery)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setIsDropdownOpen(true);
+              }}
+              onFocus={() => {
+                setIsDropdownOpen(true);
+                if (selectedStudentId) {
+                  setSearchQuery('');
+                }
+              }}
+            />
+            {selectedStudentId ? (
+              <button
+                type="button"
+                onClick={handleClearStudent}
+                className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                title="Clear selection"
+              >
+                <X size={14} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <ChevronDown size={14} />
+              </button>
+            )}
+          </div>
+
+          {isDropdownOpen && (
+            <div className="absolute z-50 left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg py-1">
+              {filteredStudents.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-slate-400 text-center">
+                  No students found
+                </div>
+              ) : (
+                filteredStudents.map((s) => {
+                  const isSelected = s.id === selectedStudentId;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => handleSelectStudent(s.id)}
+                      className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-slate-50 transition-colors ${
+                        isSelected ? 'bg-slate-50 text-[var(--accent-dark)] font-semibold' : 'text-slate-700'
+                      }`}
+                    >
+                      <span>{getStudentDisplayName(s)}</span>
+                      {isSelected && <Check size={13} className="text-[var(--accent-dark)]" />}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
 
         <input
           type="month"
