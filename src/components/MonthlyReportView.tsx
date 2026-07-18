@@ -351,16 +351,16 @@ export default function MonthlyReportView({
 
                 dayRows.push(
                   <tr key={`${dateStr}-${idx}`} className="hover:bg-slate-50/50">
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{formatDateNice(dateObj)}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-700 w-[10%] min-w-[70px]">{formatDateNice(dateObj)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap w-[15%] min-w-[100px]">
                       <span className={`inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full ${getSubjectClass(c.subject)}`}>
                         {c.subject}
                       </span>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">{getStatusTag(c.status)}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600">{durationText}</td>
-                    <td className="px-4 py-3 text-sm text-slate-700 whitespace-pre-wrap max-w-xs">{lessonText}</td>
-                    <td className="px-4 py-3 text-sm text-slate-500 whitespace-pre-wrap max-w-xs">{c.remarks || '—'}</td>
+                    <td className="px-4 py-3 whitespace-nowrap w-[10%] min-w-[70px]">{getStatusTag(c.status)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600 w-[8%] min-w-[60px]">{durationText}</td>
+                    <td className="px-4 py-3 text-sm text-slate-700 whitespace-pre-wrap w-[37%] min-w-[240px] max-w-sm">{lessonText}</td>
+                    <td className="px-4 py-3 text-sm text-slate-500 whitespace-pre-wrap w-[20%] min-w-[160px] max-w-xs">{c.remarks || '—'}</td>
                   </tr>
                 );
               });
@@ -461,12 +461,12 @@ export default function MonthlyReportView({
                       <table className="min-w-full divide-y divide-slate-200 text-xs sm:text-sm">
                         <thead className="bg-slate-50">
                           <tr>
-                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Date</th>
-                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Subject</th>
-                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Attendance</th>
-                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Duration</th>
-                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Lesson / Note</th>
-                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Remarks / Homework</th>
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[10%] min-w-[70px]">Date</th>
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[15%] min-w-[100px]">Subject</th>
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[10%] min-w-[70px]">Attendance</th>
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[8%] min-w-[60px]">Duration</th>
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[37%] min-w-[240px]">Lesson / Note</th>
+                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[20%] min-w-[160px]">Remarks / Homework</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-slate-100">{dayRows}</tbody>
