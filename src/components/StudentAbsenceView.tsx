@@ -16,6 +16,7 @@ interface AbsenceRecord {
   id: string;
   dateStr: string;
   studentName: string;
+  studentTeamsId?: string;
   subject: string;
   status: 'absent' | 'leave';
   time: string;
@@ -157,6 +158,7 @@ export default function StudentAbsenceView({
             id: `${slot.id}-${dateStr}`,
             dateStr,
             studentName: student?.name || 'Removed Student',
+            studentTeamsId: student?.teamsId || '',
             subject: slot.subject,
             status: logEntry.status,
             time: slot.time,
@@ -551,34 +553,54 @@ export default function StudentAbsenceView({
                   <thead className="bg-slate-50">
                     <tr>
                       {timeScope === 'week' && (
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Date</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider print:hidden">Date</th>
                       )}
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Student</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Subject</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Time</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Regular Teacher</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Covering Teacher</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Remarks / Reason</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider print:w-[25%] print:px-2 print:py-1.5">Student</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider print:w-[15%] print:px-2 print:py-1.5">Subject</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider hidden print:table-cell print:w-[20%] print:px-2 print:py-1.5">Teams ID</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider hidden print:table-cell print:w-[25%] print:px-2 print:py-1.5">Teacher</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider print:w-[15%] print:px-2 print:py-1.5">Status</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider print:hidden">Time</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider print:hidden">Regular Teacher</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider print:hidden">Covering Teacher</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider print:hidden">Remarks / Reason</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-slate-100">
                     {filteredRecords.map((rec) => (
                       <tr key={rec.id} className="hover:bg-slate-50/50">
                         {timeScope === 'week' && (
-                          <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-slate-700">
+                          <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-slate-700 print:hidden">
                             {formatDateNice(rec.dateStr)}
                           </td>
                         )}
-                        <td className="px-4 py-3 whitespace-nowrap font-bold text-slate-800">
+                        <td className="px-4 py-3 whitespace-nowrap font-bold text-slate-800 print:w-[25%] print:px-2 print:py-1.5">
                           {rec.studentName}
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
+                        <td className="px-4 py-3 whitespace-nowrap print:w-[15%] print:px-2 print:py-1.5">
                           <span className={`inline-flex items-center px-2 py-0.5 text-[11px] font-semibold rounded-full border ${getSubjectClass(rec.subject)}`}>
                             {rec.subject}
                           </span>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
+                        <td className="px-4 py-3 whitespace-nowrap hidden print:table-cell print:w-[20%] print:px-2 print:py-1.5 text-xs">
+                          {rec.studentTeamsId ? (
+                            <span className="font-mono text-[11px] px-2 py-0.5 rounded border bg-blue-50/50 text-blue-700 border-blue-200/40">
+                              {rec.studentTeamsId}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap hidden print:table-cell print:w-[25%] print:px-2 print:py-1.5 text-xs">
+                          {rec.actualTeacherName !== rec.regularTeacherName ? (
+                            <span className="text-[var(--science)] font-semibold">
+                              {rec.actualTeacherName} (Sub)
+                            </span>
+                          ) : (
+                            <span className="text-slate-600 font-medium">{rec.actualTeacherName}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap print:w-[15%] print:px-2 print:py-1.5">
                           {rec.status === 'absent' ? (
                             <span className="inline-flex items-center px-2 py-0.5 text-xs font-bold rounded-md bg-[var(--warn-soft)] text-[var(--warn)] border border-[var(--warn)]/20 uppercase tracking-wider">
                               Absent
@@ -589,13 +611,13 @@ export default function StudentAbsenceView({
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-xs text-slate-600 font-medium">
+                        <td className="px-4 py-3 whitespace-nowrap text-xs text-slate-600 font-medium print:hidden">
                           {formatTimeToAMPM(rec.time)} &middot; {rec.duration}m
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-slate-600 text-xs font-medium">
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-600 text-xs font-medium print:hidden">
                           {rec.regularTeacherName}
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-xs font-medium">
+                        <td className="px-4 py-3 whitespace-nowrap text-xs font-medium print:hidden">
                           {rec.actualTeacherName !== rec.regularTeacherName ? (
                             <span className="text-[var(--science)] font-semibold" title="Covering as Substitute">
                               {rec.actualTeacherName} (Sub)
@@ -604,7 +626,7 @@ export default function StudentAbsenceView({
                             <span className="text-slate-500">{rec.actualTeacherName}</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-xs text-slate-600 whitespace-pre-wrap max-w-xs italic">
+                        <td className="px-4 py-3 text-xs text-slate-600 whitespace-pre-wrap max-w-xs italic print:hidden">
                           {rec.remarks || rec.content || <span className="text-slate-400 not-italic">—</span>}
                         </td>
                       </tr>
@@ -682,13 +704,13 @@ export default function StudentAbsenceView({
                   <thead className="bg-slate-50">
                     <tr>
                       <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[12%] print:hidden">Time</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[22%] print:w-[25%]">Student</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[12%] print:w-[15%]">Subject</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[14%] print:w-[20%]">Teams ID</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[22%] print:w-[25%] print:px-2 print:py-1.5">Student</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[12%] print:w-[15%] print:px-2 print:py-1.5">Subject</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[14%] print:w-[20%] print:px-2 print:py-1.5">Teams ID</th>
                       <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[14%] print:hidden">Zoom ID / Link</th>
                       <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[12%] print:hidden">Google Meet</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[18%] print:w-[25%]">Teacher</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[10%] print:w-[15%]">Status</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[18%] print:w-[25%] print:px-2 print:py-1.5">Teacher</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[10%] print:w-[15%] print:px-2 print:py-1.5">Status</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-slate-100">
@@ -713,15 +735,15 @@ export default function StudentAbsenceView({
                           <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-slate-700 print:hidden">
                             {formatTimeToAMPM(slot.time)} <span className="text-[10px] text-slate-400 font-normal">({slot.duration}m)</span>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap font-extrabold text-slate-900 print:w-[25%]">
+                          <td className="px-4 py-3 whitespace-nowrap font-extrabold text-slate-900 print:w-[25%] print:px-2 print:py-1.5">
                             {student?.name || 'Removed Student'}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap print:w-[15%]">
+                          <td className="px-4 py-3 whitespace-nowrap print:w-[15%] print:px-2 print:py-1.5">
                             <span className={`inline-flex items-center px-2 py-0.5 text-[11px] font-semibold rounded-full border ${getSubjectClass(slot.subject)}`}>
                               {slot.subject}
                             </span>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap print:w-[20%]">
+                          <td className="px-4 py-3 whitespace-nowrap print:w-[20%] print:px-2 print:py-1.5">
                             {renderPlatformValue(student?.teamsId, 'teams')}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap print:hidden">
@@ -730,7 +752,7 @@ export default function StudentAbsenceView({
                           <td className="px-4 py-3 whitespace-nowrap print:hidden">
                             {renderPlatformValue(student?.googleMeet, 'meet')}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-xs print:w-[25%]">
+                          <td className="px-4 py-3 whitespace-nowrap text-xs print:w-[25%] print:px-2 print:py-1.5">
                             {actualTeacher ? (
                               actualTeacher.id !== teacher?.id ? (
                                 <span className="text-[var(--science)] font-semibold" title={`Regular: ${teacher?.name || '—'}`}>
@@ -743,7 +765,7 @@ export default function StudentAbsenceView({
                               <span className="text-slate-400">—</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap print:w-[15%]">
+                          <td className="px-4 py-3 whitespace-nowrap print:w-[15%] print:px-2 print:py-1.5">
                             {getStatusBadge(status)}
                           </td>
                         </tr>

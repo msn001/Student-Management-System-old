@@ -83,7 +83,7 @@ input:focus, select:focus, textarea:focus {
 /* Print Overrides */
 @media print {
   @page {
-    margin: 0.3in !important;
+    margin: 0.3in 0.15in !important;
   }
 
   /* Reset the entire html and body scroll parameters to allow standard print pagination */

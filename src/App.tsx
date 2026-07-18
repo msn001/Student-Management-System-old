@@ -13,7 +13,7 @@ import ManageAttendanceView from './components/ManageAttendanceView';
 import StudentAbsenceView from './components/StudentAbsenceView';
 import { BookOpen, Calendar, Clock, Clipboard, Users, GraduationCap, Menu, X, Lock, Unlock, Settings, Key, CalendarClock, Fingerprint, UserCheck, UserX, Upload, Trash2, Image } from 'lucide-react';
 
-const LOCKED_TABS = ['timetable', 'people', 'adjustments', 'manage_attendance'];
+const LOCKED_TABS = ['timetable', 'people', 'adjustments', 'manage_attendance', 'student_absence'];
 
 const SCHOOL_DAY_CUTOFF_HOUR = 6;
 
@@ -538,7 +538,7 @@ export default function App() {
 
           {/* Active Tab View Window */}
           <main className="flex-1 p-6 md:p-8 overflow-y-auto">
-            <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-6 md:p-8 min-h-[460px]">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-6 md:p-8 min-h-[460px] print:p-0 print:border-none print:shadow-none">
               {activeTab === 'dashboard' && (
                 <DashboardView
                   slots={slots}
