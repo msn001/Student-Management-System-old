@@ -210,6 +210,7 @@ export default function DailyLogView({
                 key={s.id}
                 slot={s}
                 studentName={student?.name || 'Removed Student'}
+                student={student}
                 entry={entry}
                 teachers={teachers}
                 effTeacherId={effTeacherId}
@@ -230,6 +231,7 @@ export default function DailyLogView({
 function LogEntryCard({
   slot,
   studentName,
+  student,
   entry,
   teachers,
   effTeacherId,
@@ -241,6 +243,7 @@ function LogEntryCard({
   key?: string;
   slot: ClassSlot;
   studentName: string;
+  student?: Student;
   entry: any;
   teachers: Teacher[];
   effTeacherId: string;
@@ -292,10 +295,44 @@ function LogEntryCard({
       {/* Header */}
       <div className="flex justify-between items-start flex-wrap gap-2 border-b border-dashed border-slate-200 pb-3 mb-4">
         <div>
-          <span className="font-bold text-base text-[var(--ink)] mr-2">{studentName}</span>
-          <span className={`inline-block px-2.5 py-0.5 text-xs font-semibold rounded-full ${getSubjectClass(slot.subject)}`}>
-            {slot.subject}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-bold text-base text-[var(--ink)]">{studentName}</span>
+            <span className={`inline-block px-2.5 py-0.5 text-xs font-semibold rounded-full ${getSubjectClass(slot.subject)}`}>
+              {slot.subject}
+            </span>
+          </div>
+
+          {/* Student Connection Links */}
+          {(student?.zoom || student?.teamsId || student?.googleMeet) && (
+            <div className="flex flex-wrap gap-2 items-center mt-2">
+              {student.teamsId && (
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                  <span className="text-[9px] font-bold uppercase opacity-75">Teams:</span>
+                  <span>{student.teamsId}</span>
+                </span>
+              )}
+              {student.zoom && (
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-100">
+                  <span className="text-[9px] font-bold uppercase opacity-75">Zoom:</span>
+                  {student.zoom.startsWith('http') ? (
+                    <a href={student.zoom} target="_blank" rel="noopener noreferrer" className="underline hover:opacity-80">Open Link</a>
+                  ) : (
+                    <span>{student.zoom}</span>
+                  )}
+                </span>
+              )}
+              {student.googleMeet && (
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold bg-teal-50 text-teal-700 border border-teal-100">
+                  <span className="text-[9px] font-bold uppercase opacity-75">Meet:</span>
+                  {student.googleMeet.startsWith('http') ? (
+                    <a href={student.googleMeet} target="_blank" rel="noopener noreferrer" className="underline hover:opacity-80">Open Link</a>
+                  ) : (
+                    <span>{student.googleMeet}</span>
+                  )}
+                </span>
+              )}
+            </div>
+          )}
         </div>
         <div className="text-xs text-[var(--ink-soft)] font-medium">
           Scheduled: <strong>{formatTimeToAMPM(slot.time)}</strong> &middot; {slot.duration} min

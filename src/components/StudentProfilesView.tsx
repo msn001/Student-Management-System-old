@@ -324,6 +324,45 @@ export default function StudentProfilesView({
                 <span className="text-xs text-slate-400 italic">No assigned teacher</span>
               )}
             </div>
+
+            {/* Class Connection Links */}
+            {(s.zoom || s.teamsId || s.googleMeet) && (
+              <div className="flex flex-wrap gap-2 items-center mt-2.5">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Links / IDs:</span>
+                {s.teamsId && (
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                    <span className="text-[9px] font-bold uppercase tracking-wider opacity-75">Teams:</span>
+                    <span>{s.teamsId}</span>
+                  </span>
+                )}
+                {s.zoom && (
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-100">
+                    <span className="text-[9px] font-bold uppercase tracking-wider opacity-75">Zoom:</span>
+                    {s.zoom.startsWith('http') ? (
+                      <>
+                        <a href={s.zoom} target="_blank" rel="noopener noreferrer" className="underline hover:opacity-80 no-print">Open Link</a>
+                        <span className="hidden print:inline font-mono text-[10px]">{s.zoom}</span>
+                      </>
+                    ) : (
+                      <span>{s.zoom}</span>
+                    )}
+                  </span>
+                )}
+                {s.googleMeet && (
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-100">
+                    <span className="text-[9px] font-bold uppercase tracking-wider opacity-75">Meet:</span>
+                    {s.googleMeet.startsWith('http') ? (
+                      <>
+                        <a href={s.googleMeet} target="_blank" rel="noopener noreferrer" className="underline hover:opacity-80 no-print">Open Link</a>
+                        <span className="hidden print:inline font-mono text-[10px]">{s.googleMeet}</span>
+                      </>
+                    ) : (
+                      <span>{s.googleMeet}</span>
+                    )}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {isStale ? (
