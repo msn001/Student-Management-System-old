@@ -9,6 +9,7 @@ interface MonthlyReportViewProps {
   slots: ClassSlot[];
   logsByMonth: Record<string, Record<string, LessonEntry>>;
   subsByMonth: Record<string, Record<string, string>>;
+  schoolLogo?: string;
 }
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -19,6 +20,7 @@ export default function MonthlyReportView({
   slots,
   logsByMonth,
   subsByMonth,
+  schoolLogo,
 }: MonthlyReportViewProps) {
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -369,12 +371,22 @@ export default function MonthlyReportView({
                 key={subj || 'all'} 
                 className="space-y-6 pt-4 bg-white rounded-xl border border-slate-200 p-6 md:p-8 print:border-none print:p-0 print-page-break"
               >
-                {/* Main heading - clean, with no other layout elements or headers above it */}
-                <div className="border-b pb-4 mb-2">
-                  <h2 className="serif-title font-bold text-2xl text-[var(--ink)]">{getFirstName(student?.name || '')}</h2>
-                  <p className="text-sm font-semibold text-[var(--ink-soft)] mt-1">
-                    Monthly Lesson Report &middot; {monthName}{subj ? ` &middot; ${subj}` : ''}
-                  </p>
+                {/* Main heading - clean, with logo support */}
+                <div className="border-b pb-4 mb-2 flex items-center justify-between gap-4">
+                  <div>
+                    <h2 className="serif-title font-bold text-2xl text-[var(--ink)]">{getFirstName(student?.name || '')}</h2>
+                    <p className="text-sm font-semibold text-[var(--ink-soft)] mt-1">
+                      Monthly Lesson Report &middot; {monthName}{subj ? ` &middot; ${subj}` : ''}
+                    </p>
+                  </div>
+                  {schoolLogo && (
+                    <img
+                      src={schoolLogo}
+                      alt="School Logo"
+                      className="h-12 max-w-[150px] object-contain rounded shrink-0"
+                      referrerPolicy="no-referrer"
+                    />
+                  )}
                 </div>
 
                 {/* Core Stats Row */}

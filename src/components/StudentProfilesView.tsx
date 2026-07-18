@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Student, Teacher, StudentProfile, ClassSlot } from '../types';
 import { StorageService } from '../lib/storage';
-import { Search, AlertTriangle, CheckCircle, Edit, Calendar, Users, UserCheck } from 'lucide-react';
+import { Search, AlertTriangle, CheckCircle, Edit, Calendar, Users, UserCheck, Printer } from 'lucide-react';
 
 interface StudentProfilesViewProps {
   students: Student[];
@@ -9,6 +9,7 @@ interface StudentProfilesViewProps {
   slots: ClassSlot[];
   studentProfiles: Record<string, StudentProfile>;
   onUpdateProfiles: (profiles: Record<string, StudentProfile>) => void;
+  schoolLogo?: string;
 }
 
 const PROFILE_STALE_DAYS = 15;
@@ -19,10 +20,12 @@ export default function StudentProfilesView({
   slots,
   studentProfiles,
   onUpdateProfiles,
+  schoolLogo,
 }: StudentProfilesViewProps) {
   const [search, setSearch] = useState('');
   const [staleOnly, setStaleOnly] = useState(false);
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>('all');
+  const [printingStudentId, setPrintingStudentId] = useState<string | null>(null);
 
   // Edit Mode state
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
@@ -270,15 +273,33 @@ export default function StudentProfilesView({
 
     const studentTeachers = getTeachersForStudent(s.id);
 
+    const isOtherStudentPrinting = printingStudentId !== null && printingStudentId !== s.id;
+
     return (
       <div
         key={s.id}
-        className={`bg-white rounded-xl border border-slate-200 p-6 transition-all hover:shadow-md duration-300 ${
+        className={`bg-white rounded-xl border border-slate-200 p-6 transition-all hover:shadow-md duration-300 print:shadow-none print:border-none print:p-0 print-page-break ${
           isStale
             ? 'border-l-4 border-l-[var(--warn)]'
             : 'border-l-4 border-l-[var(--accent)]'
-        }`}
+        } ${isOtherStudentPrinting ? 'print:hidden' : ''}`}
       >
+        {/* Print-only Logo Header */}
+        <div className="hidden print:flex items-center justify-between border-b pb-4 mb-6">
+          <div>
+            <h1 className="serif-title font-bold text-xl text-slate-900">Student Learning Profile</h1>
+            <p className="text-xs font-semibold text-slate-500 mt-0.5">Islamic Education Center &middot; Individual Progress Record</p>
+          </div>
+          {schoolLogo && (
+            <img 
+              src={schoolLogo} 
+              alt="School Logo" 
+              className="h-10 max-w-[120px] object-contain rounded"
+              referrerPolicy="no-referrer"
+            />
+          )}
+        </div>
+
         <div className="flex justify-between items-start flex-wrap gap-4 mb-4">
           <div>
             <h3 className="serif-title font-bold text-lg text-[var(--ink)]">{s.name}</h3>
@@ -314,11 +335,26 @@ export default function StudentProfilesView({
                 <CheckCircle size={12} /> Up to date
               </span>
             )}
+            
+            <button
+              onClick={() => {
+                setPrintingStudentId(s.id);
+                setTimeout(() => {
+                  window.print();
+                  setPrintingStudentId(null);
+                }, 150);
+              }}
+              className="px-3 py-1 bg-white border border-[var(--line-strong)] hover:border-[var(--ink-soft)] hover:bg-slate-50 rounded text-xs font-semibold flex items-center gap-1 cursor-pointer no-print"
+              title="Print learning profile for this student"
+            >
+              <Printer size={12} /> Print
+            </button>
+
             <button
               onClick={() => handleStartEdit(s.id, p)}
               className="px-3 py-1 bg-white border border-[var(--line-strong)] hover:border-[var(--ink-soft)] rounded text-xs font-semibold flex items-center gap-1 cursor-pointer no-print"
             >
-              <Edit size={12} /> {p ? 'Edit profile' : 'Add profile'}
+              <Edit size={12} /> {p ? 'Edit' : 'Add'}
             </button>
           </div>
         </div>
@@ -367,6 +403,17 @@ export default function StudentProfilesView({
 
   return (
     <div>
+      {/* Print-only general Page Header when printing all profiles */}
+      {schoolLogo && printingStudentId === null && (
+        <div className="hidden print:flex items-center justify-between border-b-2 border-slate-300 pb-4 mb-8">
+          <div>
+            <h1 className="serif-title font-bold text-2xl text-slate-900">Student Learning Profiles</h1>
+            <p className="text-sm font-semibold text-slate-500 mt-1">Islamic Education Center &middot; Complete Student Progress Directory</p>
+          </div>
+          <img src={schoolLogo} alt="School Logo" className="h-14 max-w-[150px] object-contain rounded" referrerPolicy="no-referrer" />
+        </div>
+      )}
+
       <div className="toolbar flex flex-wrap gap-4 items-center mb-6 no-print bg-slate-50 p-4 rounded-xl border border-[var(--line)]">
         <div className="relative flex-1 min-w-[240px]">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -411,6 +458,14 @@ export default function StudentProfilesView({
           />
           Needs review / update only
         </label>
+
+        <button
+          onClick={() => window.print()}
+          className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs ml-auto"
+          title="Print entire list of active student profiles"
+        >
+          <Printer size={14} /> Print All Profiles
+        </button>
       </div>
 
       <div className="space-y-6">

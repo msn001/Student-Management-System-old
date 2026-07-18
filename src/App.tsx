@@ -11,7 +11,7 @@ import AdjustmentsView from './components/AdjustmentsView';
 import TeacherAttendanceView from './components/TeacherAttendanceView';
 import ManageAttendanceView from './components/ManageAttendanceView';
 import StudentAbsenceView from './components/StudentAbsenceView';
-import { BookOpen, Calendar, Clock, Clipboard, Users, GraduationCap, Menu, X, Lock, Unlock, Settings, Key, CalendarClock, Fingerprint, UserCheck, UserX } from 'lucide-react';
+import { BookOpen, Calendar, Clock, Clipboard, Users, GraduationCap, Menu, X, Lock, Unlock, Settings, Key, CalendarClock, Fingerprint, UserCheck, UserX, Upload, Trash2, Image } from 'lucide-react';
 
 const LOCKED_TABS = ['timetable', 'people', 'adjustments', 'manage_attendance'];
 
@@ -49,6 +49,9 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [schoolLogo, setSchoolLogo] = useState(() => {
+    return localStorage.getItem('lesson_register_logo') || '';
+  });
 
   // Shared application state
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -115,8 +118,33 @@ export default function App() {
     setAdminPin(trimmed);
     localStorage.setItem('lesson_register_pin', trimmed);
     setNewPinInput('');
-    setShowPinSettings(false);
     alert('PIN updated successfully!');
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // File size safety check (e.g., limit to 2MB to keep localStorage reasonable)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Logo image should be under 2MB to ensure smooth performance.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result as string;
+      setSchoolLogo(base64);
+      localStorage.setItem('lesson_register_logo', base64);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveLogo = () => {
+    if (window.confirm('Are you sure you want to remove the custom school logo?')) {
+      setSchoolLogo('');
+      localStorage.removeItem('lesson_register_logo');
+    }
   };
 
   // Overnight school-day cutoff calculations (9 PM - 6 AM session handling)
@@ -322,9 +350,13 @@ export default function App() {
         {/* Mobile Navbar Header */}
         <div className="md:hidden flex items-center justify-between px-6 py-4 bg-slate-900 text-white shadow-md z-20 no-print">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded bg-emerald-600 flex items-center justify-center font-bold text-sm text-white font-serif">
-              I
-            </div>
+            {schoolLogo ? (
+              <img src={schoolLogo} alt="Logo" className="w-8 h-8 object-contain rounded bg-white p-0.5" referrerPolicy="no-referrer" />
+            ) : (
+              <div className="w-8 h-8 rounded bg-emerald-600 flex items-center justify-center font-bold text-sm text-white font-serif shrink-0">
+                I
+              </div>
+            )}
             <span className="font-bold text-base tracking-tight">Islamic <span className="text-emerald-500 font-extrabold">Education Center</span></span>
           </div>
           <button
@@ -348,10 +380,17 @@ export default function App() {
           fixed md:sticky top-0 left-0 h-screen w-64 bg-slate-900 text-white shrink-0 border-r border-slate-800 flex flex-col z-50 transition-transform duration-300 no-print
           ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         `}>
-          <div className="p-6 border-b border-slate-800 flex items-center justify-between">
-            <div>
-              <h1 className="text-lg font-bold tracking-tight">Islamic <span className="text-emerald-500">Education Center</span></h1>
-              <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest font-extrabold">Admin Dashboard</p>
+          <div className="p-6 border-b border-slate-800 flex items-center gap-3">
+            {schoolLogo ? (
+              <img src={schoolLogo} alt="Logo" className="w-10 h-10 object-contain rounded bg-white p-1 shrink-0" referrerPolicy="no-referrer" />
+            ) : (
+              <div className="w-10 h-10 rounded bg-emerald-600 flex items-center justify-center font-bold text-lg text-white font-serif shrink-0">
+                I
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <h1 className="text-sm font-bold tracking-tight truncate leading-tight">Islamic <span className="text-emerald-500 block">Education Center</span></h1>
+              <p className="text-[9px] text-slate-400 uppercase tracking-widest font-extrabold mt-0.5">Admin Dashboard</p>
             </div>
             <button
               onClick={() => setIsMobileMenuOpen(false)}
@@ -554,6 +593,7 @@ export default function App() {
                   slots={slots}
                   logsByMonth={logsByMonth}
                   subsByMonth={subsByMonth}
+                  schoolLogo={schoolLogo}
                 />
               )}
 
@@ -574,6 +614,7 @@ export default function App() {
                   slots={slots}
                   studentProfiles={studentProfiles}
                   onUpdateProfiles={setStudentProfiles}
+                  schoolLogo={schoolLogo}
                 />
               )}
 
@@ -659,49 +700,109 @@ export default function App() {
         </div>
       )}
 
-      {/* PIN Change Settings Modal */}
+      {/* Branding & Security Settings Modal */}
       {showPinSettings && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-[100] no-print">
-          <div className="bg-white rounded-xl border-2 border-slate-300 p-6 w-full max-w-sm shadow-xl space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-slate-100 text-slate-700 rounded-lg">
-                <Settings size={20} />
+          <div className="bg-white rounded-xl border-2 border-slate-300 p-6 w-full max-w-md shadow-xl space-y-6">
+            <div className="flex items-center gap-3 border-b pb-3">
+              <div className="p-2 bg-slate-100 text-slate-700 rounded-lg">
+                <Settings size={22} />
               </div>
               <div>
-                <h3 className="font-bold text-slate-900 text-base serif-title">Update Admin Passcode</h3>
-                <p className="text-xs text-slate-500">Secure access to Teacher, Student, & Timetable settings</p>
+                <h3 className="font-bold text-slate-900 text-base serif-title">Branding & Admin Settings</h3>
+                <p className="text-xs text-slate-500">Configure school branding, reports logo, and administrative access</p>
+              </div>
+            </div>
+
+            {/* Logo Branding Section */}
+            <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <h4 className="font-bold text-xs text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                <Image size={14} className="text-slate-500" />
+                School Logo
+              </h4>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Upload your school or center logo. This logo will display on the sidebar, mobile header, and at the top of all printed attendance and progress reports.
+              </p>
+
+              <div className="flex items-center gap-4 pt-1">
+                {schoolLogo ? (
+                  <div className="relative group shrink-0">
+                    <img
+                      src={schoolLogo}
+                      alt="Current Logo"
+                      className="w-16 h-16 object-contain rounded border bg-white p-1 shadow-xs"
+                      referrerPolicy="no-referrer"
+                    />
+                    <button
+                      onClick={handleRemoveLogo}
+                      className="absolute -top-1.5 -right-1.5 p-1 bg-red-100 hover:bg-red-200 text-red-600 rounded-full border border-red-200 shadow-xs cursor-pointer transition-colors"
+                      title="Remove logo"
+                    >
+                      <Trash2 size={10} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 rounded border-2 border-dashed border-slate-300 flex flex-col items-center justify-center bg-slate-100/50 text-slate-400 shrink-0">
+                    <Image size={24} />
+                    <span className="text-[9px] mt-1">No Logo</span>
+                  </div>
+                )}
+
+                <div className="flex-1 min-w-0">
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 rounded text-xs font-semibold text-slate-700 cursor-pointer shadow-xs transition-colors">
+                    <Upload size={12} className="text-slate-400" />
+                    <span>Upload Image</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoUpload}
+                      className="hidden"
+                    />
+                  </label>
+                  <p className="text-[10px] text-slate-400 mt-1.5">
+                    Supports PNG, JPG, or SVG up to 2MB. Recommendation: transparent background.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* PIN Settings Section */}
+            <div className="space-y-3">
+              <h4 className="font-bold text-xs text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                <Key size={14} className="text-slate-500" />
+                Admin Passcode
+              </h4>
+              
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">New Admin PIN (Min. 4 chars)</label>
+                  <input
+                    type="text"
+                    maxLength={8}
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded focus:outline-none focus:border-blue-500 text-center tracking-widest text-base font-mono font-bold bg-white"
+                    placeholder="e.g. 5678"
+                    value={newPinInput}
+                    onChange={(e) => setNewPinInput(e.target.value)}
+                  />
+                </div>
+                <button
+                  onClick={handleChangePin}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded text-xs cursor-pointer h-[34px] shadow-xs"
+                >
+                  Update PIN
+                </button>
               </div>
             </div>
             
-            <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-700">New Admin PIN (Min. 4 chars)</label>
-              <input
-                type="text"
-                maxLength={8}
-                className="w-full px-3 py-2 border-2 border-slate-300 rounded focus:outline-none focus:border-blue-500 text-center tracking-widest text-lg font-mono font-bold bg-white"
-                placeholder="e.g. 5678"
-                value={newPinInput}
-                onChange={(e) => setNewPinInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleChangePin()}
-                autoFocus
-              />
-            </div>
-            
-            <div className="flex gap-2 pt-1">
-              <button
-                onClick={handleChangePin}
-                className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded text-sm cursor-pointer"
-              >
-                Save PIN
-              </button>
+            <div className="flex justify-end border-t pt-3">
               <button
                 onClick={() => {
                   setShowPinSettings(false);
                   setNewPinInput('');
                 }}
-                className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded text-sm cursor-pointer"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded text-xs cursor-pointer shadow-xs"
               >
-                Cancel
+                Done / Close
               </button>
             </div>
           </div>
