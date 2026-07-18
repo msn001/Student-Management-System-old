@@ -100,7 +100,11 @@ export default function App() {
       setPinError('');
       setPinInput('');
       setShowUnlockModal(false);
-      if (pendingTab) {
+      if (pendingTab === 'settings') {
+        setNewPinInput('');
+        setShowPinSettings(true);
+        setPendingTab(null);
+      } else if (pendingTab) {
         setActiveTab(pendingTab);
         setPendingTab(null);
       }
@@ -461,19 +465,25 @@ export default function App() {
                 )}
               </span>
               
-              <div className="flex gap-2">
-                {isUnlocked && (
-                  <button 
-                    onClick={() => {
+              <div className="flex gap-2 items-center">
+                <button 
+                  onClick={() => {
+                    if (isUnlocked) {
                       setNewPinInput('');
                       setShowPinSettings(true);
-                    }}
-                    className="p-1 hover:text-white text-slate-400 hover:bg-slate-800 rounded transition-colors cursor-pointer"
-                    title="Change Passcode"
-                  >
-                    <Settings size={14} />
-                  </button>
-                )}
+                    } else {
+                      setPendingTab('settings');
+                      setPinInput('');
+                      setPinError('');
+                      setShowUnlockModal(true);
+                    }
+                  }}
+                  className="p-1 hover:text-white text-slate-400 hover:bg-slate-800 rounded transition-colors cursor-pointer flex items-center gap-1 border border-slate-800/60 px-1.5 py-0.5 bg-slate-900/40"
+                  title="Branding & Admin Settings (School Logo, PIN)"
+                >
+                  <Settings size={13} />
+                  {!isUnlocked && <Lock size={9} className="text-slate-500" />}
+                </button>
                 
                 {isUnlocked ? (
                   <button 

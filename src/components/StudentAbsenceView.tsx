@@ -501,10 +501,19 @@ export default function StudentAbsenceView({
         <>
           {/* Main Print Header */}
           <div className="hidden print:block border-b-2 border-slate-300 pb-4 mb-6">
-            <h1 className="serif-title font-extrabold text-2xl text-slate-900">Student Absence & Leave Report</h1>
-            <p className="text-xs font-semibold text-slate-500 mt-1">
-              Reference Date: {formatDateNice(referenceDate)} &middot; Scope: {timeScope === 'today' ? 'Today Only' : 'Last 7 Days'} &middot; Generated on {new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-            </p>
+            <div className="flex justify-between items-start flex-wrap gap-4">
+              <div>
+                <h1 className="serif-title font-extrabold text-2xl text-slate-900">Student Absence & Leave Report</h1>
+                <p className="text-xs font-semibold text-slate-500 mt-1">
+                  Reference Date: {formatDateNice(referenceDate)} &middot; Scope: {timeScope === 'today' ? 'Today Only' : 'Last 7 Days'} &middot; Generated on {new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                </p>
+              </div>
+              <div className="text-right shrink-0">
+                <span className="font-extrabold text-lg tracking-tight">
+                  <span style={{ color: '#2596be' }}>Islamic Education</span> <span style={{ color: '#ff8610' }}>Centre</span>
+                </span>
+              </div>
+            </div>
           </div>
 
           {loading ? (
@@ -613,10 +622,19 @@ export default function StudentAbsenceView({
         <>
           {/* Main Print Header */}
           <div className="hidden print:block border-b-2 border-slate-300 pb-4 mb-6">
-            <h1 className="serif-title font-extrabold text-2xl text-slate-900">Daily Classes Schedule Summary</h1>
-            <p className="text-xs font-semibold text-slate-500 mt-1">
-              Date: {formatDateNice(referenceDate)} &middot; Generated on {new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-            </p>
+            <div className="flex justify-between items-start flex-wrap gap-4">
+              <div>
+                <h1 className="serif-title font-extrabold text-2xl text-slate-900">Daily Classes Schedule Summary</h1>
+                <p className="text-xs font-semibold text-slate-500 mt-1">
+                  Date: {formatDateNice(referenceDate)} &middot; Generated on {new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                </p>
+              </div>
+              <div className="text-right shrink-0">
+                <span className="font-extrabold text-lg tracking-tight">
+                  <span style={{ color: '#2596be' }}>Islamic Education</span> <span style={{ color: '#ff8610' }}>Centre</span>
+                </span>
+              </div>
+            </div>
           </div>
 
           {loading ? (
@@ -663,14 +681,14 @@ export default function StudentAbsenceView({
                 <table className="min-w-full divide-y divide-slate-200 text-sm">
                   <thead className="bg-slate-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[12%]">Time</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[22%]">Student</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[12%]">Subject</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[14%]">Teams ID</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[14%]">Zoom ID / Link</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[12%]">Google Meet</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[18%]">Teacher</th>
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[10%]">Status</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[12%] print:hidden">Time</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[22%] print:w-[25%]">Student</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[12%] print:w-[15%]">Subject</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[14%] print:w-[20%]">Teams ID</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[14%] print:hidden">Zoom ID / Link</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[12%] print:hidden">Google Meet</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[18%] print:w-[25%]">Teacher</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[10%] print:w-[15%]">Status</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-slate-100">
@@ -692,27 +710,27 @@ export default function StudentAbsenceView({
 
                       return (
                         <tr key={slot.id} className="hover:bg-slate-50/50">
-                          <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-slate-700">
+                          <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-slate-700 print:hidden">
                             {formatTimeToAMPM(slot.time)} <span className="text-[10px] text-slate-400 font-normal">({slot.duration}m)</span>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap font-extrabold text-slate-900">
+                          <td className="px-4 py-3 whitespace-nowrap font-extrabold text-slate-900 print:w-[25%]">
                             {student?.name || 'Removed Student'}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
+                          <td className="px-4 py-3 whitespace-nowrap print:w-[15%]">
                             <span className={`inline-flex items-center px-2 py-0.5 text-[11px] font-semibold rounded-full border ${getSubjectClass(slot.subject)}`}>
                               {slot.subject}
                             </span>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
+                          <td className="px-4 py-3 whitespace-nowrap print:w-[20%]">
                             {renderPlatformValue(student?.teamsId, 'teams')}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
+                          <td className="px-4 py-3 whitespace-nowrap print:hidden">
                             {renderPlatformValue(student?.zoom, 'zoom')}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
+                          <td className="px-4 py-3 whitespace-nowrap print:hidden">
                             {renderPlatformValue(student?.googleMeet, 'meet')}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-xs">
+                          <td className="px-4 py-3 whitespace-nowrap text-xs print:w-[25%]">
                             {actualTeacher ? (
                               actualTeacher.id !== teacher?.id ? (
                                 <span className="text-[var(--science)] font-semibold" title={`Regular: ${teacher?.name || '—'}`}>
@@ -725,7 +743,7 @@ export default function StudentAbsenceView({
                               <span className="text-slate-400">—</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
+                          <td className="px-4 py-3 whitespace-nowrap print:w-[15%]">
                             {getStatusBadge(status)}
                           </td>
                         </tr>

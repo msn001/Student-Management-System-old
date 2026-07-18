@@ -374,6 +374,11 @@ export default function MonthlyReportView({
                 {/* Main heading - clean, with logo support */}
                 <div className="border-b pb-4 mb-2 flex items-center justify-between gap-4">
                   <div>
+                    <div className="mb-1 text-xs md:text-sm">
+                      <span className="font-extrabold tracking-tight">
+                        <span style={{ color: '#2596be' }}>Islamic Education</span> <span style={{ color: '#ff8610' }}>Centre</span>
+                      </span>
+                    </div>
                     <h2 className="serif-title font-bold text-2xl text-[var(--ink)]">{getFirstName(student?.name || '')}</h2>
                     <p className="text-sm font-semibold text-[var(--ink-soft)] mt-1">
                       Monthly Lesson Report · {monthName}{subj ? ` · ${subj}` : ''}

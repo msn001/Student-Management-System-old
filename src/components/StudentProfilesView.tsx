@@ -288,7 +288,9 @@ export default function StudentProfilesView({
         <div className="hidden print:flex items-center justify-between border-b pb-4 mb-6">
           <div>
             <h1 className="serif-title font-bold text-xl text-slate-900">Student Learning Profile</h1>
-            <p className="text-xs font-semibold text-slate-500 mt-0.5">Islamic Education Center &middot; Individual Progress Record</p>
+            <p className="text-xs font-semibold text-slate-500 mt-0.5">
+              <span className="font-extrabold"><span style={{ color: '#2596be' }}>Islamic Education</span> <span style={{ color: '#ff8610' }}>Centre</span></span> &middot; Individual Progress Record
+            </p>
           </div>
           {schoolLogo && (
             <img 
@@ -443,13 +445,17 @@ export default function StudentProfilesView({
   return (
     <div>
       {/* Print-only general Page Header when printing all profiles */}
-      {schoolLogo && printingStudentId === null && (
+      {printingStudentId === null && (
         <div className="hidden print:flex items-center justify-between border-b-2 border-slate-300 pb-4 mb-8">
           <div>
             <h1 className="serif-title font-bold text-2xl text-slate-900">Student Learning Profiles</h1>
-            <p className="text-sm font-semibold text-slate-500 mt-1">Islamic Education Center &middot; Complete Student Progress Directory</p>
+            <p className="text-sm font-semibold text-slate-500 mt-1">
+              <span className="font-extrabold"><span style={{ color: '#2596be' }}>Islamic Education</span> <span style={{ color: '#ff8610' }}>Centre</span></span> &middot; Complete Student Progress Directory
+            </p>
           </div>
-          <img src={schoolLogo} alt="School Logo" className="h-14 max-w-[150px] object-contain rounded" referrerPolicy="no-referrer" />
+          {schoolLogo && (
+            <img src={schoolLogo} alt="School Logo" className="h-14 max-w-[150px] object-contain rounded" referrerPolicy="no-referrer" />
+          )}
         </div>
       )}
 
