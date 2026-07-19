@@ -12,6 +12,13 @@ interface StudentProfilesViewProps {
   schoolLogo?: string;
 }
 
+interface ProfileItem {
+  student: Student;
+  subject: string;
+  profileKey: string;
+  teachers: Teacher[];
+}
+
 const PROFILE_STALE_DAYS = 15;
 
 export default function StudentProfilesView({
@@ -27,8 +34,8 @@ export default function StudentProfilesView({
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>('all');
   const [printingStudentId, setPrintingStudentId] = useState<string | null>(null);
 
-  // Edit Mode state
-  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+  // Edit Mode state - scoped by profileKey
+  const [editingProfileKey, setEditingProfileKey] = useState<string | null>(null);
   const [editBook, setEditBook] = useState('');
   const [editQaida, setEditQaida] = useState('');
   const [editNotes, setEditNotes] = useState('');
@@ -63,8 +70,8 @@ export default function StudentProfilesView({
     return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   };
 
-  const handleStartEdit = (studentId: string, p: StudentProfile | undefined) => {
-    setEditingProfileId(studentId);
+  const handleStartEdit = (profileKey: string, p: StudentProfile | undefined) => {
+    setEditingProfileKey(profileKey);
     setEditBook(p?.book || '');
     setEditQaida(p?.qaida || '');
     setEditNotes(p?.notes || '');
@@ -72,7 +79,7 @@ export default function StudentProfilesView({
     setEditUpdatedBy(p?.updatedBy || '');
   };
 
-  const handleSaveProfile = async (studentId: string) => {
+  const handleSaveProfile = async (profileKey: string) => {
     if (!editUpdatedBy) {
       alert('Please choose which teacher is updating this profile.');
       return;
@@ -81,7 +88,7 @@ export default function StudentProfilesView({
     const todayStr = new Date().toISOString().split('T')[0];
     const updatedProfiles = {
       ...studentProfiles,
-      [studentId]: {
+      [profileKey]: {
         book: editBook.trim(),
         qaida: editQaida.trim(),
         notes: editNotes.trim(),
@@ -91,26 +98,54 @@ export default function StudentProfilesView({
       },
     };
 
-    setEditingProfileId(null);
+    setEditingProfileKey(null);
     onUpdateProfiles(updatedProfiles);
     await StorageService.saveKey('studentProfiles', updatedProfiles);
   };
 
-  const getTeachersForStudent = (studentId: string): Teacher[] => {
-    const assignedTeacherIds = new Set(
-      slots.filter((slot) => slot.studentId === studentId).map((slot) => slot.teacherId)
-    );
-    return teachers.filter((t) => assignedTeacherIds.has(t.id));
+  // Generate Profile Items (Student + Subject combinations)
+  const getProfileItems = (): ProfileItem[] => {
+    const items: ProfileItem[] = [];
+    const sortedStudents = students.slice().sort((a, b) => a.name.localeCompare(b.name));
+
+    sortedStudents.forEach((s) => {
+      const studentSlots = slots.filter((slot) => slot.studentId === s.id);
+      const uniqueSubjects = Array.from(new Set(studentSlots.map((slot) => slot.subject).filter(Boolean)));
+
+      if (uniqueSubjects.length === 0) {
+        // Fallback for students with no slots/subjects
+        items.push({
+          student: s,
+          subject: 'General',
+          profileKey: s.id,
+          teachers: []
+        });
+      } else {
+        uniqueSubjects.forEach((sub) => {
+          const subjectTeachers = teachers.filter((t) =>
+            studentSlots.some((slot) => slot.teacherId === t.id && slot.subject === sub)
+          );
+          items.push({
+            student: s,
+            subject: sub,
+            profileKey: `${s.id}_${sub}`,
+            teachers: subjectTeachers
+          });
+        });
+      }
+    });
+
+    return items;
   };
 
-  const sortedStudents = students.slice().sort((a, b) => a.name.localeCompare(b.name));
-
   // Regular filtered list for Flat view or Specific Teacher view
-  const getFilteredStudentsList = () => {
-    return sortedStudents.filter((s) => {
-      const matchesSearch = s.name.toLowerCase().includes(search.toLowerCase());
-      
-      const p = studentProfiles[s.id];
+  const getFilteredProfileItems = () => {
+    const allItems = getProfileItems();
+    return allItems.filter((item) => {
+      const matchesSearch = item.student.name.toLowerCase().includes(search.toLowerCase()) ||
+                            item.subject.toLowerCase().includes(search.toLowerCase());
+
+      const p = studentProfiles[item.profileKey] || studentProfiles[item.student.id];
       const d = p ? daysSince(p.updatedAt) : null;
       const isStale = d === null || d > PROFILE_STALE_DAYS;
 
@@ -119,8 +154,7 @@ export default function StudentProfilesView({
 
       // Filter by specific teacher if chosen
       if (selectedTeacherId !== 'all' && selectedTeacherId !== 'grouped') {
-        const studentTeachers = getTeachersForStudent(s.id);
-        if (!studentTeachers.some((t) => t.id === selectedTeacherId)) {
+        if (!item.teachers.some((t) => t.id === selectedTeacherId)) {
           return false;
         }
       }
@@ -130,65 +164,54 @@ export default function StudentProfilesView({
   };
 
   // Grouped data structure for "Group by Teacher" mode
-  const getGroupedStudents = () => {
-    const groupedData: { teacher: Teacher | null; students: Student[] }[] = [];
-    
+  const getGroupedProfileItems = () => {
+    const groupedData: { teacher: Teacher | null; items: ProfileItem[] }[] = [];
+    const filteredItems = getFilteredProfileItems();
+
     // 1. Group for each teacher
     const sortedTeachersList = teachers.slice().sort((a, b) => a.name.localeCompare(b.name));
     sortedTeachersList.forEach((t) => {
-      const teacherStudents = sortedStudents.filter((s) => {
-        const studentTeachers = getTeachersForStudent(s.id);
-        const isAssigned = studentTeachers.some((st) => st.id === t.id);
-        if (!isAssigned) return false;
-        
-        // Apply search and stale filters
-        const matchesSearch = s.name.toLowerCase().includes(search.toLowerCase());
-        const p = studentProfiles[s.id];
-        const d = p ? daysSince(p.updatedAt) : null;
-        const isStale = d === null || d > PROFILE_STALE_DAYS;
-        if (staleOnly && !isStale) return false;
-        return matchesSearch;
-      });
-      
-      if (teacherStudents.length > 0) {
-        groupedData.push({ teacher: t, students: teacherStudents });
+      const teacherItems = filteredItems.filter((item) =>
+        item.teachers.some((st) => st.id === t.id)
+      );
+
+      if (teacherItems.length > 0) {
+        groupedData.push({ teacher: t, items: teacherItems });
       }
     });
 
-    // 2. Group for students with NO teacher assigned
-    const unassignedStudents = sortedStudents.filter((s) => {
-      const studentTeachers = getTeachersForStudent(s.id);
-      if (studentTeachers.length > 0) return false;
-      
-      // Apply search and stale filters
-      const matchesSearch = s.name.toLowerCase().includes(search.toLowerCase());
-      const p = studentProfiles[s.id];
-      const d = p ? daysSince(p.updatedAt) : null;
-      const isStale = d === null || d > PROFILE_STALE_DAYS;
-      if (staleOnly && !isStale) return false;
-      return matchesSearch;
-    });
-
-    if (unassignedStudents.length > 0) {
-      groupedData.push({ teacher: null, students: unassignedStudents });
+    // 2. Group for items with NO teacher assigned
+    const unassignedItems = filteredItems.filter((item) => item.teachers.length === 0);
+    if (unassignedItems.length > 0) {
+      groupedData.push({ teacher: null, items: unassignedItems });
     }
 
     return groupedData;
   };
 
-  const renderStudentCard = (s: Student) => {
-    const p = studentProfiles[s.id];
+  const renderStudentCard = (
+    s: Student,
+    subject: string,
+    profileKey: string,
+    teachersForSubject: Teacher[]
+  ) => {
+    const p = studentProfiles[profileKey] || studentProfiles[s.id];
     const d = p ? daysSince(p.updatedAt) : null;
     const isStale = d === null || d > PROFILE_STALE_DAYS;
-    const isEditing = editingProfileId === s.id;
+    const isEditing = editingProfileKey === profileKey;
 
     if (isEditing) {
       return (
-        <div key={s.id} className="bg-slate-50/40 rounded-xl border border-blue-200 p-6 space-y-4 shadow-sm transition-all">
+        <div key={profileKey} className="bg-slate-50/40 rounded-xl border border-blue-200 p-6 space-y-4 shadow-sm transition-all">
           <div className="flex justify-between items-center border-b pb-2 mb-2">
-            <h3 className="serif-title font-bold text-lg text-[var(--accent-dark)]">
-              Update Profile: {s.name}
-            </h3>
+            <div>
+              <h3 className="serif-title font-bold text-lg text-[var(--accent-dark)]">
+                Update Profile: {s.name}
+              </h3>
+              <div className="text-xs font-semibold text-slate-500 mt-0.5">
+                Subject: <span className="font-bold text-[var(--accent-dark)]">{subject}</span>
+              </div>
+            </div>
             <span className="text-xs text-slate-400">All changes are saved instantly.</span>
           </div>
 
@@ -256,13 +279,13 @@ export default function StudentProfilesView({
 
           <div className="flex gap-2 pt-2">
             <button
-              onClick={() => handleSaveProfile(s.id)}
+              onClick={() => handleSaveProfile(profileKey)}
               className="px-4 py-2 bg-[var(--accent)] text-white font-semibold rounded hover:bg-[var(--accent-dark)] cursor-pointer transition-colors shadow-xs"
             >
               Save Profile
             </button>
             <button
-              onClick={() => setEditingProfileId(null)}
+              onClick={() => setEditingProfileKey(null)}
               className="px-4 py-2 bg-slate-200 text-slate-700 rounded font-semibold hover:bg-slate-300 cursor-pointer transition-colors"
             >
               Cancel
@@ -280,13 +303,11 @@ export default function StudentProfilesView({
           } · ${d} day${d === 1 ? '' : 's'} ago`
         : 'Never updated yet';
 
-    const studentTeachers = getTeachersForStudent(s.id);
-
     const isOtherStudentPrinting = printingStudentId !== null && printingStudentId !== s.id;
 
     return (
       <div
-        key={s.id}
+        key={profileKey}
         className={`bg-white rounded-xl border border-slate-200 p-6 transition-all hover:shadow-md duration-300 print:shadow-none print:border-none print:p-0 print-page-break ${
           isStale
             ? 'border-l-4 border-l-[var(--warn)]'
@@ -313,16 +334,21 @@ export default function StudentProfilesView({
 
         <div className="flex justify-between items-start flex-wrap gap-4 mb-4">
           <div>
-            <h3 className="serif-title font-bold text-lg text-[var(--ink)]">{s.name}</h3>
-            <div className="text-xs text-[var(--ink-soft)] flex items-center gap-1 mt-0.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="serif-title font-bold text-lg text-[var(--ink)]">{s.name}</h3>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-[var(--accent-soft)] text-[var(--accent-dark)] border border-[var(--accent-soft)]">
+                Subject: {subject}
+              </span>
+            </div>
+            <div className="text-xs text-[var(--ink-soft)] flex items-center gap-1 mt-1.5">
               <Calendar size={12} /> {metaText}
             </div>
             
             {/* Assigned Teachers List */}
-            <div className="flex flex-wrap gap-1.5 items-center mt-2">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Teachers:</span>
-              {studentTeachers.length > 0 ? (
-                studentTeachers.map((t) => (
+            <div className="flex flex-wrap gap-1.5 items-center mt-2.5">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Teachers for this Subject:</span>
+              {teachersForSubject.length > 0 ? (
+                teachersForSubject.map((t) => (
                   <span
                     key={t.id}
                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-slate-50 text-slate-600 border border-slate-200/60"
@@ -401,7 +427,7 @@ export default function StudentProfilesView({
             </button>
 
             <button
-              onClick={() => handleStartEdit(s.id, p)}
+              onClick={() => handleStartEdit(profileKey, p)}
               className="px-3 py-1 bg-white border border-[var(--line-strong)] hover:border-[var(--ink-soft)] rounded text-xs font-semibold flex items-center gap-1 cursor-pointer no-print"
             >
               <Edit size={12} /> {p ? 'Edit' : 'Add'}
@@ -448,35 +474,35 @@ export default function StudentProfilesView({
   };
 
   const isGroupedMode = selectedTeacherId === 'grouped';
-  const filteredStudents = getFilteredStudentsList();
-  const groupedStudents = getGroupedStudents();
+  const filteredProfileItems = getFilteredProfileItems();
+  const groupedProfileItems = getGroupedProfileItems();
 
   const renderSlider = (
     sliderId: string,
-    list: Student[],
+    list: ProfileItem[],
     activeIndex: number,
     onChangeIndex: (idx: number) => void
   ) => {
     if (list.length === 0) return null;
-    
+
     // Ensure activeIndex is in bounds
     const idx = Math.max(0, Math.min(activeIndex, list.length - 1));
-    const activeStudent = list[idx];
-    if (!activeStudent) return null;
+    const activeItem = list[idx];
+    if (!activeItem) return null;
 
     return (
       <div className="space-y-4 no-print">
-        {/* Horizontal Ribbon selector of student names */}
+        {/* Horizontal Ribbon selector of student/subject names */}
         {list.length > 1 && (
           <div className="flex overflow-x-auto gap-2 pb-2 mb-1 scrollbar-none max-w-full">
-            {list.map((s, index) => {
-              const p = studentProfiles[s.id];
+            {list.map((item, index) => {
+              const p = studentProfiles[item.profileKey] || studentProfiles[item.student.id];
               const d = p ? daysSince(p.updatedAt) : null;
               const isStale = d === null || d > PROFILE_STALE_DAYS;
               const isSelected = index === idx;
               return (
                 <button
-                  key={s.id}
+                  key={item.profileKey}
                   type="button"
                   onClick={() => onChangeIndex(index)}
                   className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all border shrink-0 cursor-pointer ${
@@ -485,7 +511,7 @@ export default function StudentProfilesView({
                       : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                   }`}
                 >
-                  {s.name}
+                  {item.student.name} ({item.subject})
                   {isStale && (
                     <span className="ml-1.5 inline-block w-1.5 h-1.5 bg-[var(--warn)] rounded-full animate-pulse" />
                   )}
@@ -506,12 +532,13 @@ export default function StudentProfilesView({
           >
             <ChevronLeft size={16} />
           </button>
-          
+
           <div className="text-center select-none">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block leading-tight">Viewing Profile</span>
-            <div className="text-sm font-extrabold text-slate-800 truncate max-w-[180px] sm:max-w-xs">{activeStudent.name}</div>
-            <div className="text-[10px] font-medium text-slate-500 mt-0.5">
-              {idx + 1} of {list.length} Students
+            <div className="text-sm font-extrabold text-slate-800 truncate max-w-[180px] sm:max-w-xs">{activeItem.student.name}</div>
+            <div className="text-xs font-bold text-[var(--accent-dark)] mt-0.5 px-2 py-0.5 bg-[var(--accent-soft)] rounded-md inline-block">Subject: {activeItem.subject}</div>
+            <div className="text-[10px] font-medium text-slate-500 mt-1">
+              {idx + 1} of {list.length} Items
             </div>
           </div>
 
@@ -528,7 +555,7 @@ export default function StudentProfilesView({
 
         {/* Selected Student Card */}
         <div className="pt-2">
-          {renderStudentCard(activeStudent)}
+          {renderStudentCard(activeItem.student, activeItem.subject, activeItem.profileKey, activeItem.teachers)}
         </div>
       </div>
     );
@@ -557,12 +584,12 @@ export default function StudentProfilesView({
           <input
             type="text"
             className="w-full pl-9 pr-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:border-[var(--accent)] focus:outline-none"
-            placeholder="Search student by name…"
+            placeholder="Search student or subject name…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        
+
         {/* Group / Filter Dropdown */}
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Group/Filter:</span>
@@ -608,12 +635,12 @@ export default function StudentProfilesView({
       {/* Screen-only Interactive Slider View */}
       <div className="space-y-6 print:hidden">
         {isGroupedMode ? (
-          groupedStudents.length === 0 ? (
+          groupedProfileItems.length === 0 ? (
             <div className="text-center py-12 border-2 border-dashed border-[var(--line-strong)] rounded-xl text-slate-400">
               No grouped student profiles found.
             </div>
           ) : (
-            groupedStudents.map((group) => {
+            groupedProfileItems.map((group) => {
               const groupId = group.teacher?.id || 'unassigned';
               const groupIndex = groupSlideIndices[groupId] || 0;
               return (
@@ -623,14 +650,14 @@ export default function StudentProfilesView({
                     <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">
                       {group.teacher ? `Teacher: ${group.teacher.name}` : 'No Scheduled Teacher'}
                       <span className="ml-2 text-xs text-slate-400 font-normal bg-slate-100 px-2 py-0.5 rounded-full">
-                        {group.students.length} student{group.students.length === 1 ? '' : 's'}
+                        {group.items.length} profile{group.items.length === 1 ? '' : 's'}
                       </span>
                     </h3>
                   </div>
                   <div className="pl-0 md:pl-4">
                     {renderSlider(
                       groupId,
-                      group.students,
+                      group.items,
                       groupIndex,
                       (newIdx) => setGroupSlideIndices(prev => ({ ...prev, [groupId]: newIdx }))
                     )}
@@ -640,12 +667,12 @@ export default function StudentProfilesView({
             })
           )
         ) : (
-          filteredStudents.length === 0 ? (
+          filteredProfileItems.length === 0 ? (
             <div className="text-center py-12 border-2 border-dashed border-[var(--line-strong)] rounded-xl text-slate-400">
-              {staleOnly ? 'Every profile is up-to-date and refreshed within the last 15 days!' : 'No students found.'}
+              {staleOnly ? 'Every profile is up-to-date and refreshed within the last 15 days!' : 'No student profiles found.'}
             </div>
           ) : (
-            renderSlider('flat', filteredStudents, currentSlideIndex, setCurrentSlideIndex)
+            renderSlider('flat', filteredProfileItems, currentSlideIndex, setCurrentSlideIndex)
           )
         )}
       </div>
@@ -653,7 +680,7 @@ export default function StudentProfilesView({
       {/* Print-only complete listed profiles */}
       <div className="hidden print:block space-y-6">
         {isGroupedMode ? (
-          groupedStudents.map((group) => (
+          groupedProfileItems.map((group) => (
             <div key={group.teacher?.id || 'unassigned'} className="space-y-4">
               <div className="flex items-center gap-2 pb-2 border-b border-slate-200/80 print:hidden">
                 <Users size={16} className="text-slate-400" />
@@ -662,12 +689,12 @@ export default function StudentProfilesView({
                 </h3>
               </div>
               <div className="space-y-6">
-                {group.students.map((s) => renderStudentCard(s))}
+                {group.items.map((item) => renderStudentCard(item.student, item.subject, item.profileKey, item.teachers))}
               </div>
             </div>
           ))
         ) : (
-          filteredStudents.map((s) => renderStudentCard(s))
+          filteredProfileItems.map((item) => renderStudentCard(item.student, item.subject, item.profileKey, item.teachers))
         )}
       </div>
     </div>
