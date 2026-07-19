@@ -565,7 +565,7 @@ export default function DashboardView({
 
           {/* Classes In Progress & Coming Up Next Section */}
           {isLiveSession && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-6">
               
               {/* Classes currently in Progress */}
               <div className="space-y-3 border-2 border-emerald-200 bg-emerald-50/10 p-4 rounded-xl shadow-xs">
@@ -784,9 +784,11 @@ export default function DashboardView({
 
             </div>
           )}
+        </div>
+      </div>
 
-          {/* Summary Statistics */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+      {/* Summary Statistics */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs hover:shadow-sm transition-all duration-300 border-l-4 border-l-[var(--accent)] flex flex-col justify-between">
               <div>
                 <div className="text-[10px] font-bold text-[var(--ink-faint)] uppercase tracking-wider">
@@ -968,8 +970,5 @@ export default function DashboardView({
             )}
           </div>
         </div>
-
-      </div>
-    </div>
-  );
-}
+      );
+    }
