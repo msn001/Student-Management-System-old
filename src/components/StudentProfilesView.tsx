@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Student, Teacher, StudentProfile, ClassSlot } from '../types';
 import { StorageService } from '../lib/storage';
-import { Search, AlertTriangle, CheckCircle, Edit, Calendar, Users, UserCheck, Printer } from 'lucide-react';
+import { Search, AlertTriangle, CheckCircle, Edit, Calendar, Users, UserCheck, Printer, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface StudentProfilesViewProps {
   students: Student[];
@@ -34,6 +34,15 @@ export default function StudentProfilesView({
   const [editNotes, setEditNotes] = useState('');
   const [editSubInstructions, setEditSubInstructions] = useState('');
   const [editUpdatedBy, setEditUpdatedBy] = useState('');
+
+  // Slider states
+  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
+  const [groupSlideIndices, setGroupSlideIndices] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    setCurrentSlideIndex(0);
+    setGroupSlideIndices({});
+  }, [search, selectedTeacherId, staleOnly]);
 
   const parseDate = (s: string) => {
     const p = s.split('-').map(Number);
@@ -442,6 +451,89 @@ export default function StudentProfilesView({
   const filteredStudents = getFilteredStudentsList();
   const groupedStudents = getGroupedStudents();
 
+  const renderSlider = (
+    sliderId: string,
+    list: Student[],
+    activeIndex: number,
+    onChangeIndex: (idx: number) => void
+  ) => {
+    if (list.length === 0) return null;
+    
+    // Ensure activeIndex is in bounds
+    const idx = Math.max(0, Math.min(activeIndex, list.length - 1));
+    const activeStudent = list[idx];
+    if (!activeStudent) return null;
+
+    return (
+      <div className="space-y-4 no-print">
+        {/* Horizontal Ribbon selector of student names */}
+        {list.length > 1 && (
+          <div className="flex overflow-x-auto gap-2 pb-2 mb-1 scrollbar-none max-w-full">
+            {list.map((s, index) => {
+              const p = studentProfiles[s.id];
+              const d = p ? daysSince(p.updatedAt) : null;
+              const isStale = d === null || d > PROFILE_STALE_DAYS;
+              const isSelected = index === idx;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => onChangeIndex(index)}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all border shrink-0 cursor-pointer ${
+                    isSelected
+                      ? 'bg-[var(--accent)] text-white border-[var(--accent)] shadow-xs'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  {s.name}
+                  {isStale && (
+                    <span className="ml-1.5 inline-block w-1.5 h-1.5 bg-[var(--warn)] rounded-full animate-pulse" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Slide Controls and active student label */}
+        <div className="flex items-center justify-between bg-white border border-slate-200/80 rounded-xl p-3 shadow-xs">
+          <button
+            type="button"
+            disabled={idx === 0}
+            onClick={() => onChangeIndex(idx - 1)}
+            className="p-1.5 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-lg text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 cursor-pointer transition-colors shadow-2xs"
+            title="Previous Student"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          
+          <div className="text-center select-none">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block leading-tight">Viewing Profile</span>
+            <div className="text-sm font-extrabold text-slate-800 truncate max-w-[180px] sm:max-w-xs">{activeStudent.name}</div>
+            <div className="text-[10px] font-medium text-slate-500 mt-0.5">
+              {idx + 1} of {list.length} Students
+            </div>
+          </div>
+
+          <button
+            type="button"
+            disabled={idx === list.length - 1}
+            onClick={() => onChangeIndex(idx + 1)}
+            className="p-1.5 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-lg text-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 cursor-pointer transition-colors shadow-2xs"
+            title="Next Student"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+
+        {/* Selected Student Card */}
+        <div className="pt-2">
+          {renderStudentCard(activeStudent)}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div>
       {/* Print-only general Page Header when printing all profiles */}
@@ -513,29 +605,39 @@ export default function StudentProfilesView({
         </button>
       </div>
 
-      <div className="space-y-6">
+      {/* Screen-only Interactive Slider View */}
+      <div className="space-y-6 print:hidden">
         {isGroupedMode ? (
           groupedStudents.length === 0 ? (
             <div className="text-center py-12 border-2 border-dashed border-[var(--line-strong)] rounded-xl text-slate-400">
               No grouped student profiles found.
             </div>
           ) : (
-            groupedStudents.map((group) => (
-              <div key={group.teacher?.id || 'unassigned'} className="space-y-4">
-                <div className="flex items-center gap-2 pb-2 border-b border-slate-200/80">
-                  <Users size={16} className="text-slate-400" />
-                  <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">
-                    {group.teacher ? `Teacher: ${group.teacher.name}` : 'No Scheduled Teacher'}
-                    <span className="ml-2 text-xs text-slate-400 font-normal bg-slate-100 px-2 py-0.5 rounded-full">
-                      {group.students.length} student{group.students.length === 1 ? '' : 's'}
-                    </span>
-                  </h3>
+            groupedStudents.map((group) => {
+              const groupId = group.teacher?.id || 'unassigned';
+              const groupIndex = groupSlideIndices[groupId] || 0;
+              return (
+                <div key={groupId} className="space-y-4">
+                  <div className="flex items-center gap-2 pb-2 border-b border-slate-200/80">
+                    <Users size={16} className="text-slate-400" />
+                    <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">
+                      {group.teacher ? `Teacher: ${group.teacher.name}` : 'No Scheduled Teacher'}
+                      <span className="ml-2 text-xs text-slate-400 font-normal bg-slate-100 px-2 py-0.5 rounded-full">
+                        {group.students.length} student{group.students.length === 1 ? '' : 's'}
+                      </span>
+                    </h3>
+                  </div>
+                  <div className="pl-0 md:pl-4">
+                    {renderSlider(
+                      groupId,
+                      group.students,
+                      groupIndex,
+                      (newIdx) => setGroupSlideIndices(prev => ({ ...prev, [groupId]: newIdx }))
+                    )}
+                  </div>
                 </div>
-                <div className="space-y-4 pl-0 md:pl-4">
-                  {group.students.map((s) => renderStudentCard(s))}
-                </div>
-              </div>
-            ))
+              );
+            })
           )
         ) : (
           filteredStudents.length === 0 ? (
@@ -543,8 +645,29 @@ export default function StudentProfilesView({
               {staleOnly ? 'Every profile is up-to-date and refreshed within the last 15 days!' : 'No students found.'}
             </div>
           ) : (
-            filteredStudents.map((s) => renderStudentCard(s))
+            renderSlider('flat', filteredStudents, currentSlideIndex, setCurrentSlideIndex)
           )
+        )}
+      </div>
+
+      {/* Print-only complete listed profiles */}
+      <div className="hidden print:block space-y-6">
+        {isGroupedMode ? (
+          groupedStudents.map((group) => (
+            <div key={group.teacher?.id || 'unassigned'} className="space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b border-slate-200/80 print:hidden">
+                <Users size={16} className="text-slate-400" />
+                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">
+                  {group.teacher ? `Teacher: ${group.teacher.name}` : 'No Scheduled Teacher'}
+                </h3>
+              </div>
+              <div className="space-y-6">
+                {group.students.map((s) => renderStudentCard(s))}
+              </div>
+            </div>
+          ))
+        ) : (
+          filteredStudents.map((s) => renderStudentCard(s))
         )}
       </div>
     </div>
