@@ -40,6 +40,7 @@ export default function AdjustmentsView({
   const [adjTime, setAdjTime] = useState('');
   const [adjDuration, setAdjDuration] = useState(30);
   const [adjTeacherId, setAdjTeacherId] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const parseDate = (s: string) => {
     const p = s.split('-').map(Number);
@@ -57,6 +58,46 @@ export default function AdjustmentsView({
 
   // Find one-off makeup classes scheduled specifically for this date
   const oneOffMakeupClasses = slots.filter((s) => s.date === selectedDateStr);
+
+  // Filter lists based on searchQuery
+  const filteredWeeklySlots = regularWeeklySlots.filter((s) => {
+    if (!searchQuery) return true;
+    const student = students.find((st) => st.id === s.studentId);
+    const originalTeacher = teachers.find((t) => t.id === s.teacherId);
+    const currentAdj = dayAdjustments[s.id];
+    const displayTeacherId = currentAdj?.teacherId || s.teacherId;
+    const displayTeacher = teachers.find((t) => t.id === displayTeacherId);
+    
+    const query = searchQuery.toLowerCase();
+    const studentName = (student?.name || '').toLowerCase();
+    const teacherName = (originalTeacher?.name || '').toLowerCase();
+    const displayTeacherName = (displayTeacher?.name || '').toLowerCase();
+    const subject = s.subject.toLowerCase();
+    
+    return (
+      studentName.includes(query) ||
+      teacherName.includes(query) ||
+      displayTeacherName.includes(query) ||
+      subject.includes(query)
+    );
+  });
+
+  const filteredMakeupClasses = oneOffMakeupClasses.filter((s) => {
+    if (!searchQuery) return true;
+    const student = students.find((st) => st.id === s.studentId);
+    const teacher = teachers.find((t) => t.id === s.teacherId);
+    
+    const query = searchQuery.toLowerCase();
+    const studentName = (student?.name || '').toLowerCase();
+    const teacherName = (teacher?.name || '').toLowerCase();
+    const subject = s.subject.toLowerCase();
+    
+    return (
+      studentName.includes(query) ||
+      teacherName.includes(query) ||
+      subject.includes(query)
+    );
+  });
 
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
@@ -282,17 +323,34 @@ export default function AdjustmentsView({
             <h4 className="serif-title font-semibold text-base text-slate-800 border-b pb-2 mb-4 flex items-center justify-between">
               <span>Modify Roster for {selectedDateStr} ({DAY_NAMES[selectedDayOfWeek]}s)</span>
               <span className="text-xs bg-slate-100 px-2 py-0.5 rounded text-slate-600 font-bold">
-                {regularWeeklySlots.length} Weekly Classes scheduled
+                {regularWeeklySlots.length + oneOffMakeupClasses.length} classes scheduled today
               </span>
             </h4>
+
+            {/* Search Bar */}
+            {(regularWeeklySlots.length > 0 || oneOffMakeupClasses.length > 0) && (
+              <div className="mb-4">
+                <input
+                  type="text"
+                  placeholder="Search classes by student, teacher, or subject..."
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 text-xs shadow-3xs bg-slate-50/50 font-medium"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+            )}
 
             {regularWeeklySlots.length === 0 ? (
               <div className="text-center py-10 border border-dashed border-slate-200 rounded-lg text-slate-400 text-xs">
                 No regular weekly classes scheduled on {DAY_NAMES[selectedDayOfWeek]}s.
               </div>
+            ) : filteredWeeklySlots.length === 0 ? (
+              <div className="text-center py-10 border border-dashed border-slate-200 rounded-lg text-slate-400 text-xs">
+                No classes match your search query "{searchQuery}".
+              </div>
             ) : (
               <div className="space-y-4">
-                {regularWeeklySlots.map((s) => {
+                {filteredWeeklySlots.map((s) => {
                   const student = students.find((st) => st.id === s.studentId);
                   const originalTeacher = teachers.find((t) => t.id === s.teacherId);
                   const isEditing = editingSlotId === s.id;
@@ -488,9 +546,13 @@ export default function AdjustmentsView({
               <div className="text-center py-8 border border-dashed border-slate-200 rounded-lg text-slate-400 text-xs">
                 No one-off makeup classes scheduled for this date yet.
               </div>
+            ) : filteredMakeupClasses.length === 0 ? (
+              <div className="text-center py-8 border border-dashed border-slate-200 rounded-lg text-slate-400 text-xs">
+                No makeup classes match your search query "{searchQuery}".
+              </div>
             ) : (
               <div className="space-y-3">
-                {oneOffMakeupClasses.map((s) => {
+                {filteredMakeupClasses.map((s) => {
                   const student = students.find((st) => st.id === s.studentId);
                   const teacher = teachers.find((t) => t.id === s.teacherId);
                   return (
