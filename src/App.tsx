@@ -95,6 +95,14 @@ export default function App() {
     setupDocListener('slots', setSlots);
     setupDocListener('studentProfiles', setStudentProfiles);
     setupDocListener('dailyAdjustments', setDailyAdjustments);
+    setupDocListener('schoolLogo', (val) => {
+      setSchoolLogo(val || '');
+      if (val) {
+        localStorage.setItem('lesson_register_logo', val);
+      } else {
+        localStorage.removeItem('lesson_register_logo');
+      }
+    });
 
     return () => {
       unsubscribers.forEach((unsub) => unsub());
@@ -220,18 +228,28 @@ export default function App() {
     }
 
     const reader = new FileReader();
-    reader.onloadend = () => {
+    reader.onloadend = async () => {
       const base64 = reader.result as string;
       setSchoolLogo(base64);
       localStorage.setItem('lesson_register_logo', base64);
+      try {
+        await StorageService.saveKey('schoolLogo', base64);
+      } catch (err) {
+        console.error('Error syncing school logo to Firestore:', err);
+      }
     };
     reader.readAsDataURL(file);
   };
 
-  const handleRemoveLogo = () => {
+  const handleRemoveLogo = async () => {
     if (window.confirm('Are you sure you want to remove the custom school logo?')) {
       setSchoolLogo('');
       localStorage.removeItem('lesson_register_logo');
+      try {
+        await StorageService.saveKey('schoolLogo', '');
+      } catch (err) {
+        console.error('Error removing school logo from Firestore:', err);
+      }
     }
   };
 
@@ -258,12 +276,27 @@ export default function App() {
         const loadedSlots = await StorageService.loadKey<ClassSlot[]>('slots', []);
         const loadedProfiles = await StorageService.loadKey<Record<string, StudentProfile>>('studentProfiles', {});
         const loadedAdjustments = await StorageService.loadKey<Record<string, Record<string, { time?: string; duration?: number; teacherId?: string; isCancelled?: boolean }>>>('dailyAdjustments', {});
+        const loadedLogo = await StorageService.loadKey<string>('schoolLogo', '');
 
         setTeachers(loadedTeachers);
         setStudents(loadedStudents);
         setSlots(loadedSlots);
         setStudentProfiles(loadedProfiles);
         setDailyAdjustments(loadedAdjustments);
+
+        const localLogo = localStorage.getItem('lesson_register_logo') || '';
+        if (loadedLogo) {
+          setSchoolLogo(loadedLogo);
+          localStorage.setItem('lesson_register_logo', loadedLogo);
+        } else if (localLogo) {
+          // If we have a local logo but the server is empty, sync it to Firebase
+          setSchoolLogo(localLogo);
+          StorageService.saveKey('schoolLogo', localLogo).catch((err) => {
+            console.error('Error migrating local logo to Firebase:', err);
+          });
+        } else {
+          setSchoolLogo('');
+        }
 
         // Compute current session date
         const schoolDate = getSchoolDateNow();
