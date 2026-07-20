@@ -1,6 +1,6 @@
 import { Teacher, Student, ClassSlot, LessonEntry, StudentProfile } from '../types';
 import { db } from './firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDocFromServer, setDoc } from 'firebase/firestore';
 
 // Storage Key Constants
 const KEYS = {
@@ -54,7 +54,7 @@ export class StorageService {
     if (db) {
       try {
         const docRef = doc(db, 'lesson_register_store', key);
-        const docSnap = await getDoc(docRef);
+        const docSnap = await getDocFromServer(docRef);
         if (docSnap.exists() && typeof docSnap.data().value !== 'undefined') {
           const val = JSON.parse(docSnap.data().value);
           localStore.set(key, val);

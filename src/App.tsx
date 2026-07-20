@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Teacher, Student, ClassSlot, LessonEntry, StudentProfile } from './types';
 import { StorageService } from './lib/storage';
+import { db } from './lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 import DashboardView from './components/DashboardView';
 import TimetableView from './components/TimetableView';
 import DailyLogView from './components/DailyLogView';
@@ -63,6 +65,88 @@ export default function App() {
   // Monthly and substitute buffers (keyed by "YYYY-MM")
   const [logsByMonth, setLogsByMonth] = useState<Record<string, Record<string, Record<string, LessonEntry>>>>({});
   const [subsByMonth, setSubsByMonth] = useState<Record<string, Record<string, Record<string, string>>>>({});
+  const [activeMonths, setActiveMonths] = useState<string[]>([]);
+
+  // 1. Core real-time sync listeners (onSnapshot)
+  useEffect(() => {
+    if (!db) return;
+
+    const unsubscribers: (() => void)[] = [];
+
+    const setupDocListener = (key: string, setter: (val: any) => void) => {
+      const docRef = doc(db, 'lesson_register_store', key);
+      const unsub = onSnapshot(docRef, (docSnap) => {
+        if (docSnap.exists() && typeof docSnap.data().value !== 'undefined') {
+          try {
+            const val = JSON.parse(docSnap.data().value);
+            setter(val);
+          } catch (e) {
+            console.error(`Error parsing real-time value for ${key}`, e);
+          }
+        }
+      }, (error) => {
+        console.error(`Real-time listener failed for ${key}`, error);
+      });
+      unsubscribers.push(unsub);
+    };
+
+    setupDocListener('teachers', setTeachers);
+    setupDocListener('students', setStudents);
+    setupDocListener('slots', setSlots);
+    setupDocListener('studentProfiles', setStudentProfiles);
+    setupDocListener('dailyAdjustments', setDailyAdjustments);
+
+    return () => {
+      unsubscribers.forEach((unsub) => unsub());
+    };
+  }, []);
+
+  // 2. Monthly logs & substitutions real-time sync listeners (onSnapshot)
+  useEffect(() => {
+    if (!db || activeMonths.length === 0) return;
+
+    const unsubscribers: (() => void)[] = [];
+
+    activeMonths.forEach((mKey) => {
+      const logsDocRef = doc(db, 'lesson_register_store', `logs-${mKey}`);
+      const unsubLogs = onSnapshot(logsDocRef, (docSnap) => {
+        if (docSnap.exists() && typeof docSnap.data().value !== 'undefined') {
+          try {
+            const val = JSON.parse(docSnap.data().value);
+            setLogsByMonth((prev) => ({ ...prev, [mKey]: val }));
+          } catch (e) {
+            console.error(`Error parsing real-time logs for ${mKey}`, e);
+          }
+        } else {
+          setLogsByMonth((prev) => ({ ...prev, [mKey]: {} }));
+        }
+      }, (error) => {
+        console.error(`Real-time logs listener failed for ${mKey}`, error);
+      });
+      unsubscribers.push(unsubLogs);
+
+      const subsDocRef = doc(db, 'lesson_register_store', `subs-${mKey}`);
+      const unsubSubs = onSnapshot(subsDocRef, (docSnap) => {
+        if (docSnap.exists() && typeof docSnap.data().value !== 'undefined') {
+          try {
+            const val = JSON.parse(docSnap.data().value);
+            setSubsByMonth((prev) => ({ ...prev, [mKey]: val }));
+          } catch (e) {
+            console.error(`Error parsing real-time subs for ${mKey}`, e);
+          }
+        } else {
+          setSubsByMonth((prev) => ({ ...prev, [mKey]: {} }));
+        }
+      }, (error) => {
+        console.error(`Real-time subs listener failed for ${mKey}`, error);
+      });
+      unsubscribers.push(unsubSubs);
+    });
+
+    return () => {
+      unsubscribers.forEach((unsub) => unsub());
+    };
+  }, [activeMonths]);
 
   // Active dates for logs and dashboards
   const [dashDate, setDashDate] = useState('');
@@ -194,6 +278,7 @@ export default function App() {
 
         setLogsByMonth((prev) => ({ ...prev, [mKey]: currentMonthLogs }));
         setSubsByMonth((prev) => ({ ...prev, [mKey]: currentMonthSubs }));
+        setActiveMonths([mKey]);
       } catch (e) {
         console.error('Error bootstrapping application data', e);
       } finally {
@@ -214,6 +299,7 @@ export default function App() {
       const subs = await StorageService.getMonthSubs(mKey);
       setSubsByMonth((prev) => ({ ...prev, [mKey]: subs }));
     }
+    setActiveMonths((prev) => prev.includes(mKey) ? prev : [...prev, mKey]);
   };
 
   // Trigger when dashboard date selection changes
