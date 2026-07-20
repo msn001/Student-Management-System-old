@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ClassSlot, Student, Teacher, LessonEntry } from '../types';
 import { StorageService } from '../lib/storage';
-import { Bell, Calendar, ClipboardList, AlertCircle, Video, Clock, Lock, Users, Check } from 'lucide-react';
+import { Bell, Calendar, ClipboardList, AlertCircle, Video, Clock, Lock, Users, Check, X } from 'lucide-react';
 import { formatTimeToAMPM, getSlotsForDate } from '../lib/utils';
 
 interface DashboardViewProps {
@@ -37,6 +37,7 @@ export default function DashboardView({
   const [selectedTeacherId, setSelectedTeacherId] = useState('');
   const [notifyEnabled, setNotifyEnabled] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [studentSearchQuery, setStudentSearchQuery] = useState('');
 
   const [isCustomCheckActive, setIsCustomCheckActive] = useState(false);
   const [customCheckDate, setCustomCheckDate] = useState(() => {
@@ -195,6 +196,13 @@ export default function DashboardView({
     const effTeacherId = getEffectiveTeacherId(s);
     return effTeacherId === selectedTeacherId;
   }).sort((a, b) => a.time.localeCompare(b.time));
+
+  // Filter displayed classes by student search query if provided
+  const displayedTodaySlots = filteredTodaySlots.filter((s) => {
+    if (!studentSearchQuery) return true;
+    const student = students.find((st) => st.id === s.studentId);
+    return (student?.name || '').toLowerCase().includes(studentSearchQuery.toLowerCase());
+  });
 
   // Compute stat counts
   let scheduledCount = filteredTodaySlots.length;
@@ -834,11 +842,41 @@ export default function DashboardView({
 
           {/* Classes Table */}
           <div className="space-y-3">
-            <h3 className="serif-title font-bold text-base text-[var(--ink)]">Today's Class Schedule</h3>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-2">
+              <h3 className="serif-title font-bold text-base text-[var(--ink)]">Today's Class Schedule</h3>
+              
+              {/* Student Search Bar */}
+              {filteredTodaySlots.length > 0 && (
+                <div className="relative w-full sm:w-72">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
+                    <Users size={14} />
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="Search classes by student name..."
+                    className="w-full pl-9 pr-8 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 text-xs shadow-3xs bg-slate-50/50 font-medium"
+                    value={studentSearchQuery}
+                    onChange={(e) => setStudentSearchQuery(e.target.value)}
+                  />
+                  {studentSearchQuery && (
+                    <button
+                      onClick={() => setStudentSearchQuery('')}
+                      className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-slate-600"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
             
             {filteredTodaySlots.length === 0 ? (
               <div className="text-center py-12 border-2 border-dashed border-[var(--line-strong)] rounded-xl text-slate-400">
                 No classes scheduled for this selection today.
+              </div>
+            ) : displayedTodaySlots.length === 0 ? (
+              <div className="text-center py-12 border-2 border-dashed border-[var(--line-strong)] rounded-xl text-slate-400 text-xs font-medium">
+                No classes match the student search "{studentSearchQuery}".
               </div>
             ) : (
               <div className="overflow-x-auto border-2 border-[var(--line-strong)] rounded-xl bg-white shadow-sm">
@@ -854,7 +892,7 @@ export default function DashboardView({
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-slate-100">
-                    {filteredTodaySlots.map((s) => {
+                    {displayedTodaySlots.map((s) => {
                       const student = students.find((st) => st.id === s.studentId);
                       const entry = monthLogs[s.id]?.[selectedDateStr];
                       const effTeacherId = getEffectiveTeacherId(s);

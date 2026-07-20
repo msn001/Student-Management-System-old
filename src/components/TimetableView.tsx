@@ -82,6 +82,7 @@ export default function TimetableView({ slots, students, teachers, onUpdateSlots
   const [search, setSearch] = useState('');
   const [filterTeacher, setFilterTeacher] = useState('');
   const [filterDay, setFilterDay] = useState<string>('');
+  const [filterStudent, setFilterStudent] = useState('');
 
   // Editing state
   const [editingSlotId, setEditingSlotId] = useState<string | null>(null);
@@ -278,17 +279,22 @@ export default function TimetableView({ slots, students, teachers, onUpdateSlots
 
   // Filter slots for list
   const filteredSlots = slots
-    .map((s) => ({
-      slot: s,
-      studentName: students.find((st) => st.id === s.studentId)?.name || '(removed student)',
-      teacherName: teachers.find((t) => t.id === s.teacherId)?.name || '(removed teacher)',
-    }))
+    .map((s) => {
+      const studentObj = students.find((st) => st.id === s.studentId);
+      return {
+        slot: s,
+        studentName: studentObj?.name || '(removed student)',
+        teamsId: studentObj?.teamsId || '',
+        teacherName: teachers.find((t) => t.id === s.teacherId)?.name || '(removed teacher)',
+      };
+    })
     .filter((item) => {
       if (filterTeacher && item.slot.teacherId !== filterTeacher) return false;
+      if (filterStudent && item.slot.studentId !== filterStudent) return false;
       if (filterDay !== '' && item.slot.day.toString() !== filterDay) return false;
       if (search) {
         const query = search.toLowerCase();
-        const hay = `${item.studentName} ${item.teacherName} ${item.slot.subject}`.toLowerCase();
+        const hay = `${item.studentName} ${item.teamsId} ${item.teacherName} ${item.slot.subject}`.toLowerCase();
         if (!hay.includes(query)) return false;
       }
       return true;
@@ -531,15 +537,31 @@ export default function TimetableView({ slots, students, teachers, onUpdateSlots
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
           <input
             type="text"
-            className="w-full pl-9 pr-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:border-[var(--accent)] focus:outline-none"
-            placeholder="Search student, teacher, or subject…"
+            className="w-full pl-9 pr-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:border-[var(--accent)] focus:outline-none text-sm placeholder-slate-400"
+            placeholder="Search student, Teams ID, teacher, subject..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
 
         <select
-          className="px-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:outline-none focus:border-[var(--accent)]"
+          className="px-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:outline-none focus:border-[var(--accent)] text-sm"
+          value={filterStudent}
+          onChange={(e) => setFilterStudent(e.target.value)}
+        >
+          <option value="">All students</option>
+          {students
+            .slice()
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} {s.teamsId ? `(Teams: ${s.teamsId})` : ''}
+              </option>
+            ))}
+        </select>
+
+        <select
+          className="px-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:outline-none focus:border-[var(--accent)] text-sm"
           value={filterTeacher}
           onChange={(e) => setFilterTeacher(e.target.value)}
         >
