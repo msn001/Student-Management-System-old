@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ClassSlot, Student, Teacher, LessonEntry } from '../types';
 import { StorageService } from '../lib/storage';
 import { 
@@ -486,6 +486,7 @@ export default function DailyLogView({
 
                     return (
                       <LogEntryCard
+                        key={`${s.id}-${activeDate}`}
                         slot={s}
                         studentName={student?.name || 'Removed Student'}
                         student={student}
@@ -560,6 +561,7 @@ function LogEntryCard({
   onSubstituteChange,
   onSave,
 }: {
+  key?: string;
   slot: ClassSlot;
   studentName: string;
   student?: Student;
@@ -588,17 +590,59 @@ function LogEntryCard({
   const [content, setContent] = useState<string>(entry.content || '');
   const [remarks, setRemarks] = useState<string>(entry.remarks || '');
 
-  // Reset local state if entry or slot changes
+  // Keep track of what we last saw from the database / props to avoid wiping local unsaved edits
+  const dbValuesRef = useRef({
+    status: entry.status || '',
+    duration: entry.actualDuration !== undefined && entry.actualDuration !== null ? entry.actualDuration : slot.duration,
+    source: entry.lessonSource || '',
+    detail: entry.lessonDetail || '',
+    content: entry.content || '',
+    remarks: entry.remarks || '',
+  });
+
+  // Reset or sync local state only if database actually has newer content AND user has not modified that specific field
   useEffect(() => {
-    setStatus(entry.status || '');
-    setDuration(
-      entry.actualDuration !== undefined && entry.actualDuration !== null ? entry.actualDuration : slot.duration
-    );
-    setSource(entry.lessonSource || '');
-    setDetail(entry.lessonDetail || '');
-    setContent(entry.content || '');
-    setRemarks(entry.remarks || '');
-  }, [entry, slot]);
+    const currentDbValues = {
+      status: entry.status || '',
+      duration: entry.actualDuration !== undefined && entry.actualDuration !== null ? entry.actualDuration : slot.duration,
+      source: entry.lessonSource || '',
+      detail: entry.lessonDetail || '',
+      content: entry.content || '',
+      remarks: entry.remarks || '',
+    };
+
+    const previousDbValues = dbValuesRef.current;
+
+    // Detect actual database changes (not just re-render reference differences)
+    const statusDbChanged = currentDbValues.status !== previousDbValues.status;
+    const durationDbChanged = currentDbValues.duration !== previousDbValues.duration;
+    const sourceDbChanged = currentDbValues.source !== previousDbValues.source;
+    const detailDbChanged = currentDbValues.detail !== previousDbValues.detail;
+    const contentDbChanged = currentDbValues.content !== previousDbValues.content;
+    const remarksDbChanged = currentDbValues.remarks !== previousDbValues.remarks;
+
+    // Only update local state if database value changed and the user hasn't modified it away from previous database value
+    if (statusDbChanged && status === previousDbValues.status) {
+      setStatus(currentDbValues.status);
+    }
+    if (durationDbChanged && duration === previousDbValues.duration) {
+      setDuration(currentDbValues.duration);
+    }
+    if (sourceDbChanged && source === previousDbValues.source) {
+      setSource(currentDbValues.source);
+    }
+    if (detailDbChanged && detail === previousDbValues.detail) {
+      setDetail(currentDbValues.detail);
+    }
+    if (contentDbChanged && content === previousDbValues.content) {
+      setContent(currentDbValues.content);
+    }
+    if (remarksDbChanged && remarks === previousDbValues.remarks) {
+      setRemarks(currentDbValues.remarks);
+    }
+
+    dbValuesRef.current = currentDbValues;
+  }, [entry, slot, status, duration, source, detail, content, remarks]);
 
   const getBorderColor = () => {
     if (status === 'present') return 'border-l-4 border-l-[var(--quran)]';
