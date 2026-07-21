@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ClassSlot, Student, Teacher } from '../types';
 import { StorageService } from '../lib/storage';
-import { Plus, Trash2, Edit2, X, Check, AlertTriangle, CalendarClock, RotateCcw, User, Clock, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, Check, AlertTriangle, CalendarClock, RotateCcw, User, Clock, ChevronRight, Video } from 'lucide-react';
 import { formatTimeToAMPM } from '../lib/utils';
 
 interface AdjustmentsViewProps {
@@ -70,12 +70,18 @@ export default function AdjustmentsView({
     
     const query = searchQuery.toLowerCase();
     const studentName = (student?.name || '').toLowerCase();
+    const teamsId = (student?.teamsId || '').toLowerCase();
+    const zoom = (student?.zoom || '').toLowerCase();
+    const googleMeet = (student?.googleMeet || '').toLowerCase();
     const teacherName = (originalTeacher?.name || '').toLowerCase();
     const displayTeacherName = (displayTeacher?.name || '').toLowerCase();
     const subject = s.subject.toLowerCase();
     
     return (
       studentName.includes(query) ||
+      teamsId.includes(query) ||
+      zoom.includes(query) ||
+      googleMeet.includes(query) ||
       teacherName.includes(query) ||
       displayTeacherName.includes(query) ||
       subject.includes(query)
@@ -89,11 +95,17 @@ export default function AdjustmentsView({
     
     const query = searchQuery.toLowerCase();
     const studentName = (student?.name || '').toLowerCase();
+    const teamsId = (student?.teamsId || '').toLowerCase();
+    const zoom = (student?.zoom || '').toLowerCase();
+    const googleMeet = (student?.googleMeet || '').toLowerCase();
     const teacherName = (teacher?.name || '').toLowerCase();
     const subject = s.subject.toLowerCase();
     
     return (
       studentName.includes(query) ||
+      teamsId.includes(query) ||
+      zoom.includes(query) ||
+      googleMeet.includes(query) ||
       teacherName.includes(query) ||
       subject.includes(query)
     );
@@ -332,7 +344,7 @@ export default function AdjustmentsView({
               <div className="mb-4">
                 <input
                   type="text"
-                  placeholder="Search classes by student, teacher, or subject..."
+                  placeholder="Search classes by student, Teams/Zoom ID, teacher, or subject..."
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500 text-xs shadow-3xs bg-slate-50/50 font-medium"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -492,6 +504,29 @@ export default function AdjustmentsView({
                               )}
                             </span>
                           </div>
+
+                          {(student?.teamsId || student?.zoom || student?.googleMeet) && (
+                            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                              {student.teamsId && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-medium border border-blue-100">
+                                  <Video size={10} className="text-blue-500 shrink-0" />
+                                  Teams: {student.teamsId}
+                                </span>
+                              )}
+                              {student.zoom && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-cyan-50 text-cyan-700 rounded text-[10px] font-medium border border-cyan-100">
+                                  <Video size={10} className="text-cyan-500 shrink-0" />
+                                  Zoom: {student.zoom}
+                                </span>
+                              )}
+                              {student.googleMeet && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-50 text-green-700 rounded text-[10px] font-medium border border-green-100">
+                                  <Video size={10} className="text-green-500 shrink-0" />
+                                  Meet: {student.googleMeet}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -575,6 +610,28 @@ export default function AdjustmentsView({
                           <div>
                             Time: <strong className="text-slate-700">{formatTimeToAMPM(s.time)}</strong> ({s.duration} mins)
                           </div>
+                          {(student?.teamsId || student?.zoom || student?.googleMeet) && (
+                            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                              {student.teamsId && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-medium border border-blue-100">
+                                  <Video size={10} className="text-blue-500 shrink-0" />
+                                  Teams: {student.teamsId}
+                                </span>
+                              )}
+                              {student.zoom && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-cyan-50 text-cyan-700 rounded text-[10px] font-medium border border-cyan-100">
+                                  <Video size={10} className="text-cyan-500 shrink-0" />
+                                  Zoom: {student.zoom}
+                                </span>
+                              )}
+                              {student.googleMeet && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-50 text-green-700 rounded text-[10px] font-medium border border-green-100">
+                                  <Video size={10} className="text-green-500 shrink-0" />
+                                  Meet: {student.googleMeet}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                       <button
