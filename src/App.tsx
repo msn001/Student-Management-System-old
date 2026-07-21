@@ -17,7 +17,7 @@ import { BookOpen, Calendar, Clock, Clipboard, Users, GraduationCap, Menu, X, Lo
 
 const LOCKED_TABS = ['timetable', 'people', 'adjustments', 'manage_attendance', 'student_absence'];
 
-const SCHOOL_DAY_CUTOFF_HOUR = 6;
+const SCHOOL_DAY_CUTOFF_HOUR = 10;
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 

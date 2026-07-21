@@ -18,7 +18,7 @@ interface DashboardViewProps {
   onRequireUnlock: () => void;
 }
 
-const SCHOOL_DAY_CUTOFF_HOUR = 6;
+const SCHOOL_DAY_CUTOFF_HOUR = 10;
 
 export default function DashboardView({
   slots,
