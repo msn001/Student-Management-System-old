@@ -95,6 +95,12 @@ export default function App() {
     setupDocListener('slots', setSlots);
     setupDocListener('studentProfiles', setStudentProfiles);
     setupDocListener('dailyAdjustments', setDailyAdjustments);
+    setupDocListener('adminPin', (val) => {
+      if (val) {
+        setAdminPin(val);
+        localStorage.setItem('lesson_register_pin', val);
+      }
+    });
     setupDocListener('schoolLogo', (val) => {
       setSchoolLogo(val || '');
       if (val) {
@@ -205,7 +211,7 @@ export default function App() {
     }
   };
 
-  const handleChangePin = () => {
+  const handleChangePin = async () => {
     const trimmed = newPinInput.trim();
     if (trimmed.length < 4) {
       alert('PIN must be at least 4 characters long.');
@@ -213,6 +219,11 @@ export default function App() {
     }
     setAdminPin(trimmed);
     localStorage.setItem('lesson_register_pin', trimmed);
+    try {
+      await StorageService.saveKey('adminPin', trimmed);
+    } catch (e: any) {
+      console.error('Failed to sync new PIN to database', e);
+    }
     setNewPinInput('');
     alert('PIN updated successfully!');
   };
