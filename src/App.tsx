@@ -186,7 +186,7 @@ export default function App() {
   };
 
   const handleUnlockAttempt = () => {
-    if (pinInput === adminPin) {
+    if (pinInput.trim() === adminPin.trim()) {
       setIsUnlocked(true);
       localStorage.setItem('lesson_register_unlocked', 'true');
       setPinError('');
@@ -802,6 +802,10 @@ export default function App() {
                 }}
                 onKeyDown={(e) => e.key === 'Enter' && handleUnlockAttempt()}
                 autoFocus
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                autoComplete="off"
               />
               {pinError && <p className="text-xs font-semibold text-red-500">{pinError}</p>}
             </div>
