@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { AttendanceService, AttendanceTeacher, AttendanceRecord } from '../lib/attendanceService';
-import { Clock, Fingerprint, Calendar, ClipboardList, RefreshCw, AlertTriangle, Printer, LogIn, ChevronRight, User } from 'lucide-react';
+import { AttendanceService, AttendanceTeacher, AttendanceRecord, AttendanceSettings, DEFAULT_ATTENDANCE_SETTINGS, getDailyPasscode, getDistanceInMeters } from '../lib/attendanceService';
+import { Clock, Fingerprint, Calendar, ClipboardList, RefreshCw, AlertTriangle, Printer, LogIn, ChevronRight, User, MapPin, Lock, KeyRound, Smartphone } from 'lucide-react';
 import { formatTimeToAMPM } from '../lib/utils';
+import { StorageService } from '../lib/storage';
+
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -22,6 +24,11 @@ export default function TeacherAttendanceView() {
   const [todayRecords, setTodayRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Security settings & state
+  const [securitySettings, setSecuritySettings] = useState<AttendanceSettings>(DEFAULT_ATTENDANCE_SETTINGS);
+  const [dailyPasscodeInput, setDailyPasscodeInput] = useState('');
+  const [isThisKiosk, setIsThisKiosk] = useState(false);
 
   // Clock state
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -47,13 +54,21 @@ export default function TeacherAttendanceView() {
     return () => clearInterval(timer);
   }, []);
 
-  // 2. Fetch initial data (teachers + today's attendance logs)
+  // 2. Fetch initial data (teachers + today's attendance logs + security settings)
   const loadData = async () => {
     setLoading(true);
     setError('');
     try {
-      const fetchedTeachers = await AttendanceService.getTeachers();
+      // Check if this device is authorized as central kiosk
+      const isKiosk = localStorage.getItem('is_authorized_kiosk') === 'true';
+      setIsThisKiosk(isKiosk);
+
+      const [fetchedTeachers, fetchedSettings] = await Promise.all([
+        AttendanceService.getTeachers(),
+        StorageService.loadKey<AttendanceSettings>('attendanceSettings', DEFAULT_ATTENDANCE_SETTINGS)
+      ]);
       setTeachers(fetchedTeachers);
+      setSecuritySettings(fetchedSettings);
 
       // Fetch today's records (and yesterday's for night shifts, following the HTML structure)
       const nowStr = getLocalDateString();
@@ -132,6 +147,104 @@ export default function TeacherAttendanceView() {
 
   const submitPin = async (pin: string) => {
     setPinBusy(true);
+
+    // 1. Check Mobile Lockout Constraint
+    if (securitySettings.lockMobileCheckIn && !isThisKiosk) {
+      setScanResult({
+        type: 'err',
+        icon: '🚫',
+        name: 'Check-In Restricted',
+        status: 'Direct mobile check-ins are disabled. Use the physical kiosk at reception.',
+      });
+      setPinBuffer('');
+      setPinBusy(false);
+      setTimeout(() => setScanResult(null), 4000);
+      return;
+    }
+
+    // 2. Validate Noticeboard Passcode Constraint
+    if (securitySettings.dailyPasscodeEnabled && !isThisKiosk) {
+      const todayStr = getLocalDateString(new Date());
+      const expectedCode = getDailyPasscode(todayStr, securitySettings.dailyPasscodeSeed);
+      if (dailyPasscodeInput !== expectedCode) {
+        setScanResult({
+          type: 'err',
+          icon: '🔑',
+          name: 'Invalid Passcode',
+          status: 'Noticeboard passcode is incorrect. Check the board and retry.',
+        });
+        setPinBuffer('');
+        setPinBusy(false);
+        setTimeout(() => setScanResult(null), 3500);
+        return;
+      }
+    }
+
+    // 3. Validate GPS Geofencing Constraint
+    if (securitySettings.geofencingEnabled && !isThisKiosk) {
+      setScanResult({
+        type: 'info',
+        icon: '📡',
+        name: 'Verifying GPS Location',
+        status: 'Retrieving your coordinates...',
+      });
+
+      if (!navigator.geolocation) {
+        setScanResult({
+          type: 'err',
+          icon: '📍',
+          name: 'GPS Unsupported',
+          status: 'Browser location is unsupported. Check in on the reception kiosk.',
+        });
+        setPinBuffer('');
+        setPinBusy(false);
+        setTimeout(() => setScanResult(null), 3500);
+        return;
+      }
+
+      try {
+        const coords = await new Promise<GeolocationCoordinates>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => resolve(pos.coords),
+            (err) => reject(err),
+            { enableHighAccuracy: true, timeout: 8000 }
+          );
+        });
+
+        const distance = getDistanceInMeters(
+          coords.latitude,
+          coords.longitude,
+          securitySettings.schoolLatitude,
+          securitySettings.schoolLongitude
+        );
+
+        if (distance > securitySettings.allowedRadius) {
+          setScanResult({
+            type: 'err',
+            icon: '🚫',
+            name: 'Out of Range',
+            status: `Blocked: You are ${Math.round(distance)}m from the center. (Allowed: ${securitySettings.allowedRadius}m)`,
+          });
+          setPinBuffer('');
+          setPinBusy(false);
+          setTimeout(() => setScanResult(null), 5000);
+          return;
+        }
+      } catch (err: any) {
+        setScanResult({
+          type: 'err',
+          icon: '❌',
+          name: 'GPS Verification Failed',
+          status: `Location access denied or unavailable: ${err.message || 'Check browser permissions'}.`,
+        });
+        setPinBuffer('');
+        setPinBusy(false);
+        setTimeout(() => setScanResult(null), 4000);
+        return;
+      }
+    }
+
+    // All anti-fraud constraints passed. Proceed with check-in/out.
     setScanResult({
       type: 'info',
       icon: '⏳',
@@ -197,6 +310,7 @@ export default function TeacherAttendanceView() {
       setPinBusy(false);
     }
   };
+
 
   const findTeacherIdByName = (name: string, list: AttendanceTeacher[]): string => {
     const t = list.find((x) => x.name.toLowerCase() === name.toLowerCase());
@@ -307,6 +421,22 @@ export default function TeacherAttendanceView() {
                     {scanResult.status}
                   </span>
                 </div>
+              ) : securitySettings.lockMobileCheckIn && !isThisKiosk ? (
+                // Lockout screen if mobile check-in is disabled and this is not the reception kiosk
+                <div className="w-full max-w-sm flex flex-col items-center text-center space-y-5 p-4 animate-fadeIn">
+                  <div className="w-14 h-14 bg-red-50 text-red-500 rounded-full flex items-center justify-center border border-red-150 shadow-2xs">
+                    <Lock size={24} />
+                  </div>
+                  <div>
+                    <h3 className="serif-title font-bold text-lg text-slate-800">Mobile Check-In Restricted</h3>
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                      Islamic Education Center requires all clock-ins and clock-outs to be performed on the central physical kiosk tablet at the reception desk.
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 text-[10px] text-slate-400 p-3 rounded-xl w-full select-none">
+                    Direct scanning/bookmarks on personal mobile phones are disabled.
+                  </div>
+                </div>
               ) : (
                 // Standard PIN entry mode
                 <div className="w-full max-w-sm flex flex-col items-center space-y-6">
@@ -314,6 +444,27 @@ export default function TeacherAttendanceView() {
                     <h3 className="serif-title font-bold text-lg text-slate-800">Enter Your 4-Digit PIN</h3>
                     <p className="text-xs text-slate-500 mt-1">Check yourself in or out automatically</p>
                   </div>
+
+                  {/* Daily Whiteboard Passcode input if enabled and not the authorized Kiosk */}
+                  {securitySettings.dailyPasscodeEnabled && !isThisKiosk && (
+                    <div className="w-full bg-amber-50/60 p-4 rounded-xl border border-amber-100 flex flex-col items-center space-y-2 shadow-2xs">
+                      <div className="flex items-center gap-1.5 text-amber-800">
+                        <KeyRound size={13} className="text-amber-600 animate-pulse" />
+                        <span className="text-[11px] font-extrabold uppercase tracking-wider">Whiteboard Passcode Required</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 text-center leading-relaxed">
+                        Enter the daily 4-digit security code written on the physical whiteboard.
+                      </p>
+                      <input
+                        type="text"
+                        maxLength={4}
+                        placeholder="••••"
+                        className="w-24 px-2 py-1 border border-slate-300 rounded-lg text-center font-mono font-bold tracking-widest text-slate-700 bg-white shadow-3xs focus:outline-none focus:border-amber-500 text-sm"
+                        value={dailyPasscodeInput}
+                        onChange={(e) => setDailyPasscodeInput(e.target.value.replace(/\D/g, ''))}
+                      />
+                    </div>
+                  )}
 
                   {/* Dot slots */}
                   <div className="flex gap-4">
@@ -363,6 +514,13 @@ export default function TeacherAttendanceView() {
                       ⌫
                     </button>
                   </div>
+
+                  {/* GPS Verification Badge */}
+                  {securitySettings.geofencingEnabled && !isThisKiosk && (
+                    <div className="flex items-center gap-1 text-[10px] text-blue-600 font-bold bg-blue-50/50 px-2.5 py-1 rounded-full border border-blue-100 shadow-3xs select-none">
+                      <MapPin size={11} /> GPS Location Verification Enabled
+                    </div>
+                  )}
                 </div>
               )}
             </div>

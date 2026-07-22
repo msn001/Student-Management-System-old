@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { AttendanceService, AttendanceTeacher, AttendanceRecord } from '../lib/attendanceService';
-import { UserCheck, Plus, Trash2, Edit2, X, Check, AlertTriangle, Printer, User, QrCode, ClipboardList } from 'lucide-react';
+import { AttendanceService, AttendanceTeacher, AttendanceRecord, AttendanceSettings, DEFAULT_ATTENDANCE_SETTINGS, getDailyPasscode } from '../lib/attendanceService';
+import { UserCheck, Plus, Trash2, Edit2, X, Check, AlertTriangle, Printer, User, QrCode, ClipboardList, ShieldAlert, MapPin, Lock, Smartphone, Laptop, KeyRound, Activity } from 'lucide-react';
 import { formatTimeToAMPM } from '../lib/utils';
+import { StorageService } from '../lib/storage';
+
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -13,6 +15,15 @@ export default function ManageAttendanceView() {
   const [teachers, setTeachers] = useState<AttendanceTeacher[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Security settings states
+  const [securitySettings, setSecuritySettings] = useState<AttendanceSettings>(DEFAULT_ATTENDANCE_SETTINGS);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState('');
+  const [detecting, setDetecting] = useState(false);
+  const [isThisKiosk, setIsThisKiosk] = useState(() => {
+    return localStorage.getItem('is_authorized_kiosk') === 'true';
+  });
 
   // Add Teacher form state
   const [newName, setNewName] = useState('');
@@ -45,23 +56,81 @@ export default function ManageAttendanceView() {
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState('');
 
-  // Load teachers
-  const loadTeachers = async () => {
+  // Load teachers and security settings
+  const loadInitialData = async () => {
     setLoading(true);
     setError('');
     try {
-      const fetched = await AttendanceService.getTeachers();
-      setTeachers(fetched);
+      const [fetchedTeachers, fetchedSettings] = await Promise.all([
+        AttendanceService.getTeachers(),
+        StorageService.loadKey<AttendanceSettings>('attendanceSettings', DEFAULT_ATTENDANCE_SETTINGS)
+      ]);
+      setTeachers(fetchedTeachers);
+      setSecuritySettings(fetchedSettings);
     } catch (err: any) {
-      setError(err.message || 'Failed to load teachers.');
+      setError(err.message || 'Failed to load initial data.');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadTeachers();
+    loadInitialData();
   }, []);
+
+  const handleSaveSettings = async (updated: AttendanceSettings) => {
+    setSaveLoading(true);
+    setSaveSuccess('');
+    try {
+      await StorageService.saveKey('attendanceSettings', updated);
+      setSecuritySettings(updated);
+      setSaveSuccess('Security settings saved successfully!');
+      setTimeout(() => setSaveSuccess(''), 4000);
+    } catch (err: any) {
+      alert('Error saving settings: ' + err.message);
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
+  const handleDetectLocation = () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser.');
+      return;
+    }
+    setDetecting(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const updated = {
+          ...securitySettings,
+          schoolLatitude: parseFloat(position.coords.latitude.toFixed(6)),
+          schoolLongitude: parseFloat(position.coords.longitude.toFixed(6)),
+        };
+        setSecuritySettings(updated);
+        setDetecting(false);
+        handleSaveSettings(updated);
+        alert(`School center locked to coordinates:\nLatitude: ${updated.schoolLatitude}\nLongitude: ${updated.schoolLongitude}`);
+      },
+      (error) => {
+        setDetecting(false);
+        alert(`Failed to detect location: ${error.message}. Please key in coordinates manually.`);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const handleToggleThisDeviceKiosk = () => {
+    const nextVal = !isThisKiosk;
+    setIsThisKiosk(nextVal);
+    if (nextVal) {
+      localStorage.setItem('is_authorized_kiosk', 'true');
+      alert('SUCCESS: This device has been authorized as a Central Reception Kiosk.\n\nIt will bypass all Geofencing/Whiteboard restrictions and allow direct physical check-ins for teachers.');
+    } else {
+      localStorage.removeItem('is_authorized_kiosk');
+      alert('This device is no longer authorized as a Central Kiosk.');
+    }
+  };
+
 
   // Fetch report data
   const fetchReport = async () => {
@@ -322,6 +391,199 @@ export default function ManageAttendanceView() {
                   </button>
                 </form>
               </div>
+            </div>
+
+            {/* Attendance Security Settings */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
+              <div>
+                <h4 className="serif-title font-semibold text-base text-slate-800 border-b pb-2 mb-3 flex items-center gap-1.5">
+                  <ShieldAlert size={16} className="text-amber-500" /> Anti-Fraud Security
+                </h4>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Prevent teachers from checking in or out when they are not physically present at the center.
+                </p>
+              </div>
+
+              {/* Security Option 1: GPS Geofencing */}
+              <div className="space-y-3 pt-1 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <MapPin size={15} className="text-blue-500" />
+                    <span className="text-xs font-bold text-slate-700">GPS Geofencing</span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={securitySettings.geofencingEnabled}
+                      onChange={(e) => {
+                        const updated = { ...securitySettings, geofencingEnabled: e.target.checked };
+                        handleSaveSettings(updated);
+                      }}
+                    />
+                    <div className="w-8 h-4 bg-slate-200 rounded-full peer peer-checked:bg-blue-600 relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:after:translate-x-[14px]"></div>
+                  </label>
+                </div>
+
+                {securitySettings.geofencingEnabled && (
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-[11px] space-y-2.5">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase">Latitude</label>
+                        <input
+                          type="number"
+                          step="any"
+                          className="w-full px-2 py-1 border border-slate-300 rounded text-xs bg-white text-slate-800"
+                          value={securitySettings.schoolLatitude}
+                          onChange={(e) => {
+                            const updated = { ...securitySettings, schoolLatitude: parseFloat(e.target.value) || 0 };
+                            setSecuritySettings(updated);
+                          }}
+                          onBlur={() => handleSaveSettings(securitySettings)}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase">Longitude</label>
+                        <input
+                          type="number"
+                          step="any"
+                          className="w-full px-2 py-1 border border-slate-300 rounded text-xs bg-white text-slate-800"
+                          value={securitySettings.schoolLongitude}
+                          onChange={(e) => {
+                            const updated = { ...securitySettings, schoolLongitude: parseFloat(e.target.value) || 0 };
+                            setSecuritySettings(updated);
+                          }}
+                          onBlur={() => handleSaveSettings(securitySettings)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1">
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase">Radius (meters)</label>
+                        <input
+                          type="number"
+                          className="w-full px-2 py-1 border border-slate-300 rounded text-xs bg-white text-slate-800"
+                          value={securitySettings.allowedRadius}
+                          onChange={(e) => {
+                            const updated = { ...securitySettings, allowedRadius: parseInt(e.target.value) || 50 };
+                            setSecuritySettings(updated);
+                          }}
+                          onBlur={() => handleSaveSettings(securitySettings)}
+                        />
+                      </div>
+                      
+                      <button
+                        type="button"
+                        onClick={handleDetectLocation}
+                        disabled={detecting}
+                        className="mt-3 px-2 py-1 bg-blue-50 text-blue-700 font-semibold rounded hover:bg-blue-100 transition-colors flex items-center gap-1 text-[10px] cursor-pointer"
+                      >
+                        <MapPin size={11} /> {detecting ? 'Detecting...' : 'Lock Coords'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Security Option 2: Daily Rotating Noticeboard Passcode */}
+              <div className="space-y-3 pt-3 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <KeyRound size={15} className="text-emerald-500" />
+                    <span className="text-xs font-bold text-slate-700">Noticeboard Passcode</span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={securitySettings.dailyPasscodeEnabled}
+                      onChange={(e) => {
+                        const updated = { ...securitySettings, dailyPasscodeEnabled: e.target.checked };
+                        handleSaveSettings(updated);
+                      }}
+                    />
+                    <div className="w-8 h-4 bg-slate-200 rounded-full peer peer-checked:bg-blue-600 relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:after:translate-x-[14px]"></div>
+                  </label>
+                </div>
+
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  Generates a dynamic 4-digit code. Write this code on your whiteboard. Teachers must enter it on their phones to clock in.
+                </p>
+
+                {securitySettings.dailyPasscodeEnabled && (
+                  <div className="bg-emerald-50/50 p-3 rounded-xl border border-emerald-100 space-y-2 text-[11px]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Today's Active Code:</span>
+                      <strong className="text-emerald-700 text-sm font-mono tracking-widest bg-emerald-100 px-2.5 py-0.5 rounded-md border border-emerald-200 shadow-3xs">
+                        {getDailyPasscode(new Date().toISOString().slice(0, 10), securitySettings.dailyPasscodeSeed)}
+                      </strong>
+                    </div>
+                    <div className="flex items-center gap-1.5 justify-between">
+                      <span className="text-slate-500 text-[10px]">Secret Seed Key:</span>
+                      <input
+                        type="text"
+                        className="px-1.5 py-0.5 border border-slate-300 rounded text-[10px] font-mono text-slate-600 w-20 bg-white"
+                        value={securitySettings.dailyPasscodeSeed}
+                        onChange={(e) => {
+                          const updated = { ...securitySettings, dailyPasscodeSeed: e.target.value };
+                          setSecuritySettings(updated);
+                        }}
+                        onBlur={() => handleSaveSettings(securitySettings)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Security Option 3: Lock Mobile Check-Ins */}
+              <div className="space-y-3 pt-3 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Smartphone size={15} className="text-purple-500" />
+                    <span className="text-xs font-bold text-slate-700">Lock Mobile Check-In</span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={securitySettings.lockMobileCheckIn}
+                      onChange={(e) => {
+                        const updated = { ...securitySettings, lockMobileCheckIn: e.target.checked };
+                        handleSaveSettings(updated);
+                      }}
+                    />
+                    <div className="w-8 h-4 bg-slate-200 rounded-full peer peer-checked:bg-blue-600 relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:after:translate-x-[14px]"></div>
+                  </label>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  Require teachers to use a designated tablet/phone mounted at your reception desk, completely disabling direct check-ins from their own mobile phones.
+                </p>
+              </div>
+
+              {/* Central Kiosk Device Config */}
+              <div className="pt-3 border-t border-slate-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-600">Register This Browser as Central Kiosk</span>
+                  <button
+                    onClick={handleToggleThisDeviceKiosk}
+                    className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1 ${
+                      isThisKiosk 
+                        ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-200' 
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
+                    }`}
+                  >
+                    {isThisKiosk ? <Laptop size={11} /> : <Smartphone size={11} />}
+                    {isThisKiosk ? 'Authorized Kiosk' : 'Authorize This Browser'}
+                  </button>
+                </div>
+              </div>
+
+              {saveSuccess && (
+                <div className="p-2 bg-emerald-50 text-emerald-700 text-[10px] font-semibold rounded-lg border border-emerald-100 text-center animate-fade-in">
+                  {saveSuccess}
+                </div>
+              )}
             </div>
           </div>
 

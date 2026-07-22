@@ -85,3 +85,52 @@ export const AttendanceService = {
     await apiCall({ action: 'deleteRecord', recordId });
   }
 };
+
+export interface AttendanceSettings {
+  geofencingEnabled: boolean;
+  schoolLatitude: number;
+  schoolLongitude: number;
+  allowedRadius: number; // in meters
+  lockMobileCheckIn: boolean; // if true, must use authorized kiosk device
+  dailyPasscodeEnabled: boolean; // if true, must enter the rotating daily code
+  dailyPasscodeSeed: string; // custom seed or string
+}
+
+export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettings = {
+  geofencingEnabled: false,
+  schoolLatitude: 31.5204, // Default center
+  schoolLongitude: 74.3587,
+  allowedRadius: 100, // 100 meters
+  lockMobileCheckIn: false,
+  dailyPasscodeEnabled: false,
+  dailyPasscodeSeed: '1234',
+};
+
+// Generates a 4-digit daily passcode deterministically based on date string and seed
+export function getDailyPasscode(dateStr: string, seed: string = '1234'): string {
+  let hash = 0;
+  const combined = dateStr + seed;
+  for (let i = 0; i < combined.length; i++) {
+    hash = (hash << 5) - hash + combined.charCodeAt(i);
+    hash |= 0; // Convert to 32bit integer
+  }
+  const code = Math.abs(hash) % 10000;
+  return String(code).padStart(4, '0');
+}
+
+// Calculates distance in meters between two coordinates using Haversine formula
+export function getDistanceInMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3; // Earth radius in meters
+  const phi1 = lat1 * Math.PI / 180;
+  const phi2 = lat2 * Math.PI / 180;
+  const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+  const deltaLambda = (lon2 - lon1) * Math.PI / 180;
+
+  const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi/2) +
+            Math.cos(phi1) * Math.cos(phi2) *
+            Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
+

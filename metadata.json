@@ -1,6 +1,6 @@
 {
   "name": "Islamic Education Center",
   "description": "Weekly timetable, attendance tracker, lesson logs, student profiles, and automated monthly reports for teachers.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
