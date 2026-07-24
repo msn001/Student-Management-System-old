@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { AttendanceService, AttendanceTeacher, AttendanceRecord, AttendanceSettings, DEFAULT_ATTENDANCE_SETTINGS, getDailyPasscode } from '../lib/attendanceService';
-import { UserCheck, Plus, Trash2, Edit2, X, Check, AlertTriangle, Printer, User, QrCode, ClipboardList, ShieldAlert, MapPin, Lock, Smartphone, Laptop, KeyRound, Activity } from 'lucide-react';
+import { UserCheck, Plus, Trash2, Edit2, X, Check, AlertTriangle, Printer, User, QrCode, ClipboardList, ShieldAlert, MapPin, Lock, Smartphone, Laptop, KeyRound, Activity, HardDrive } from 'lucide-react';
 import { formatTimeToAMPM } from '../lib/utils';
 import { StorageService } from '../lib/storage';
+import PruneDataModal from './PruneDataModal';
 
 
 const MONTH_NAMES = [
@@ -21,6 +22,7 @@ export default function ManageAttendanceView() {
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState('');
   const [detecting, setDetecting] = useState(false);
+  const [showPruneModal, setShowPruneModal] = useState(false);
   const [isThisKiosk, setIsThisKiosk] = useState(() => {
     return localStorage.getItem('is_authorized_kiosk') === 'true';
   });
@@ -585,6 +587,24 @@ export default function ManageAttendanceView() {
                 </div>
               )}
             </div>
+
+            {/* Database & Memory Maintenance Card */}
+            <div className="bg-white rounded-2xl border border-red-200 p-5 shadow-xs space-y-3 bg-red-50/20">
+              <h4 className="serif-title font-semibold text-xs text-red-900 border-b border-red-100 pb-2 flex items-center gap-1.5 uppercase tracking-wider font-extrabold">
+                <HardDrive size={15} className="text-red-600" />
+                Database & Memory Maintenance
+              </h4>
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                Delete old recorded files, daily log registers, and adjustments older than 2 years (or a custom period) to optimize memory.
+              </p>
+              <button
+                onClick={() => setShowPruneModal(true)}
+                className="w-full px-3 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs cursor-pointer shadow-xs transition-colors flex items-center justify-center gap-1.5"
+              >
+                <Trash2 size={13} />
+                <span>Delete Old Records (2+ Years / Custom)...</span>
+              </button>
+            </div>
           </div>
 
           {/* Teacher List & QR Code Column */}
@@ -994,6 +1014,14 @@ export default function ManageAttendanceView() {
           </div>
         </div>
       )}
+      {/* Memory Maintenance & Pruning Modal */}
+      <PruneDataModal
+        isOpen={showPruneModal}
+        onClose={() => setShowPruneModal(false)}
+        onDataPruned={() => {
+          loadInitialData();
+        }}
+      />
     </div>
   );
 }

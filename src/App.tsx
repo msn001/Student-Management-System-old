@@ -13,7 +13,8 @@ import AdjustmentsView from './components/AdjustmentsView';
 import TeacherAttendanceView from './components/TeacherAttendanceView';
 import ManageAttendanceView from './components/ManageAttendanceView';
 import StudentAbsenceView from './components/StudentAbsenceView';
-import { BookOpen, Calendar, Clock, Clipboard, Users, GraduationCap, Menu, X, Lock, Unlock, Settings, Key, CalendarClock, Fingerprint, UserCheck, UserX, Upload, Trash2, Image } from 'lucide-react';
+import PruneDataModal from './components/PruneDataModal';
+import { BookOpen, Calendar, Clock, Clipboard, Users, GraduationCap, Menu, X, Lock, Unlock, Settings, Key, CalendarClock, Fingerprint, UserCheck, UserX, Upload, Trash2, Image, HardDrive } from 'lucide-react';
 
 const LOCKED_TABS = ['timetable', 'people', 'adjustments', 'manage_attendance', 'student_absence'];
 
@@ -181,6 +182,7 @@ export default function App() {
     return localStorage.getItem('lesson_register_pin') || '1234';
   });
   const [showPinSettings, setShowPinSettings] = useState(false);
+  const [showPruneModal, setShowPruneModal] = useState(false);
   const [newPinInput, setNewPinInput] = useState('');
 
   const handleLock = () => {
@@ -937,6 +939,28 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            {/* Data & Storage Memory Maintenance Section */}
+            <div className="space-y-3 bg-red-50/50 p-4 rounded-xl border border-red-200">
+              <h4 className="font-bold text-xs text-red-900 uppercase tracking-wider flex items-center gap-1.5">
+                <HardDrive size={14} className="text-red-600" />
+                Database Memory Maintenance
+              </h4>
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                Reduce database and app memory usage by deleting old recorded files, lesson entries, and adjustments older than 2 years (or a custom period). Requires double confirmation.
+              </p>
+
+              <button
+                onClick={() => {
+                  setShowPinSettings(false);
+                  setShowPruneModal(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs cursor-pointer shadow-xs transition-colors"
+              >
+                <Trash2 size={13} />
+                <span>Delete Old Records / Reduce Memory...</span>
+              </button>
+            </div>
             
             <div className="flex justify-end border-t pt-3">
               <button
@@ -952,6 +976,16 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Memory Maintenance & Pruning Modal */}
+      <PruneDataModal
+        isOpen={showPruneModal}
+        onClose={() => setShowPruneModal(false)}
+        onDataPruned={() => {
+          // Re-trigger active months refresh or local state if needed
+          window.location.reload();
+        }}
+      />
     </div>
   );
 }
