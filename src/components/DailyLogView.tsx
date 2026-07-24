@@ -548,6 +548,14 @@ export default function DailyLogView({
   );
 }
 
+const PRESET_LESSON_SOURCES = [
+  'Qaida',
+  'Quran',
+  'Islamic Studies',
+  'Qaida + Islamic Studies',
+  'Quran + Islamic Studies',
+];
+
 // Separate helper component for each Daily Log card to keep internal UI state local
 function LogEntryCard({
   slot,
@@ -589,6 +597,35 @@ function LogEntryCard({
   const [detail, setDetail] = useState<string>(entry.lessonDetail || '');
   const [content, setContent] = useState<string>(entry.content || '');
   const [remarks, setRemarks] = useState<string>(entry.remarks || '');
+
+  const isCustomSourceInitial = (entry.lessonSource || '') !== '' && !PRESET_LESSON_SOURCES.includes(entry.lessonSource || '');
+  const [showCustomInput, setShowCustomInput] = useState<boolean>(isCustomSourceInitial);
+  const [customSourceInput, setCustomSourceInput] = useState<string>(isCustomSourceInitial ? (entry.lessonSource || '') : '');
+
+  // Keep state in sync if source changes externally (e.g. from DB / props)
+  useEffect(() => {
+    if (source !== '' && !PRESET_LESSON_SOURCES.includes(source)) {
+      setShowCustomInput(true);
+      setCustomSourceInput(source);
+    } else if (source === '' || PRESET_LESSON_SOURCES.includes(source)) {
+      setShowCustomInput(false);
+    }
+  }, [source]);
+
+  const handleSourceSelectChange = (val: string) => {
+    if (val === '__CUSTOM__') {
+      setShowCustomInput(true);
+      setSource(customSourceInput || '');
+    } else {
+      setShowCustomInput(false);
+      setSource(val);
+    }
+  };
+
+  const handleCustomSourceInputChange = (val: string) => {
+    setCustomSourceInput(val);
+    setSource(val);
+  };
 
   // Keep track of what we last saw from the database / props to avoid wiping local unsaved edits
   const dbValuesRef = useRef({
@@ -758,29 +795,44 @@ function LogEntryCard({
         </div>
       </div>
 
-      {/* Special Quran fields */}
+      {/* Special Quran / Islamic Studies fields */}
       {isQuranClass && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 p-3 bg-teal-50/30 rounded-lg border border-teal-100">
           <div>
             <label className="block text-xs font-bold text-[var(--quran)] uppercase mb-1">Lesson From</label>
             <select
               className="w-full px-3 py-1.5 border border-teal-200 bg-white rounded-lg text-sm focus:outline-none focus:border-[var(--quran)] font-semibold text-slate-700"
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
+              value={showCustomInput ? '__CUSTOM__' : source}
+              onChange={(e) => handleSourceSelectChange(e.target.value)}
             >
               <option value="">— Select —</option>
               <option value="Qaida">Qaida</option>
               <option value="Quran">Quran</option>
+              <option value="Islamic Studies">Islamic Studies</option>
+              <option value="Qaida + Islamic Studies">Qaida + Islamic Studies</option>
+              <option value="Quran + Islamic Studies">Quran + Islamic Studies</option>
+              <option value="__CUSTOM__">✏️ Custom option...</option>
             </select>
+
+            {showCustomInput && (
+              <input
+                type="text"
+                className="w-full mt-2 px-3 py-1.5 border border-teal-300 bg-white rounded-lg text-sm focus:outline-none focus:border-[var(--quran)] font-semibold text-slate-700 placeholder:text-slate-400 placeholder:font-normal"
+                placeholder="e.g. Seerah, Tajweed, Duas, etc."
+                value={customSourceInput}
+                onChange={(e) => handleCustomSourceInputChange(e.target.value)}
+                autoFocus
+              />
+            )}
           </div>
           <div>
             <label className="block text-xs font-bold text-[var(--quran)] uppercase mb-1">
-              Detail (Page or Surah/Ayat)
+              Detail (Page / Surah / Topic)
             </label>
             <input
               type="text"
               className="w-full px-3 py-1.5 border border-teal-200 bg-white rounded-lg text-sm focus:outline-none focus:border-[var(--quran)] font-semibold text-slate-700"
-              placeholder="e.g. Page 12-14 or Surah Al-Baqarah 1-10"
+              placeholder="e.g. Page 12-14, Surah Al-Baqarah 1-10, or Lesson 3"
               value={detail}
               onChange={(e) => setDetail(e.target.value)}
             />

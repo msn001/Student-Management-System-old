@@ -25,7 +25,7 @@ export interface ClassSlot {
 export interface LessonEntry {
   status: 'present' | 'absent' | 'leave' | '';
   actualDuration: number;
-  lessonSource?: string; // "Qaida" | "Quran" | ""
+  lessonSource?: string; // "Qaida" | "Quran" | "Islamic Studies" | custom string
   lessonDetail?: string; // details of verse/page
   content: string; // notes of what was taught
   remarks: string; // teacher's remarks
