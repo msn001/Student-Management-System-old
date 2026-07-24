@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StorageService } from '../lib/storage';
+import StorageUsageCard from './StorageUsageCard';
 import { Database, Trash2, AlertTriangle, ShieldAlert, CheckCircle2, X, Clock, Calendar, HardDrive, RefreshCw } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -202,6 +203,8 @@ export default function PruneDataModal({ isOpen, onClose, onDataPruned }: PruneD
               {/* Step 1: Period Selection & Scan Overview */}
               {currentStep === 1 && (
                 <div className="space-y-5">
+                  <StorageUsageCard compact />
+
                   <div>
                     <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                       <Clock size={14} className="text-slate-500" />
