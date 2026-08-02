@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Teacher, Student, ClassSlot } from '../types';
 import { StorageService } from '../lib/storage';
-import { Plus, Edit2, Trash2, Download, Check, X } from 'lucide-react';
+import { Plus, Edit2, Trash2, Download, Check, X, RotateCcw } from 'lucide-react';
 
 interface PeopleViewProps {
   teachers: Teacher[];
@@ -10,6 +10,7 @@ interface PeopleViewProps {
   onUpdateTeachers: (teachers: Teacher[]) => void;
   onUpdateStudents: (students: Student[]) => void;
   onDownloadTimetable: (teacherId: string) => void;
+  onOpenRestoreModal?: () => void;
 }
 
 export default function PeopleView({
@@ -19,6 +20,7 @@ export default function PeopleView({
   onUpdateTeachers,
   onUpdateStudents,
   onDownloadTimetable,
+  onOpenRestoreModal,
 }: PeopleViewProps) {
   const [newTeacherName, setNewTeacherName] = useState('');
   const [newStudentName, setNewStudentName] = useState('');
@@ -151,7 +153,19 @@ export default function PeopleView({
     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
       {/* Teachers Column */}
       <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-xs">
-        <h3 className="serif-title font-semibold text-lg border-b pb-2 mb-4 text-slate-800">Teachers</h3>
+        <div className="flex items-center justify-between border-b pb-2 mb-4">
+          <h3 className="serif-title font-semibold text-lg text-slate-800">Teachers</h3>
+          {onOpenRestoreModal && (
+            <button
+              onClick={onOpenRestoreModal}
+              className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-bold rounded-lg text-xs cursor-pointer flex items-center gap-1.5 shadow-3xs transition-colors"
+              title="Diagnose corrupted teacher IDs or restore backup snapshots"
+            >
+              <RotateCcw size={13} className="text-blue-600" />
+              <span>Data Health &amp; Restore</span>
+            </button>
+          )}
+        </div>
         
         <div className="flex gap-2 mb-4">
           <input

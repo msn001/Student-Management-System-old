@@ -834,6 +834,7 @@ export default function App() {
                   onUpdateTeachers={setTeachers}
                   onUpdateStudents={setStudents}
                   onDownloadTimetable={handleDownloadTeacherTimetable}
+                  onOpenRestoreModal={() => setIsDataRestoreOpen(true)}
                 />
               )}
 

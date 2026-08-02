@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AttendanceService, AttendanceTeacher, AttendanceRecord, AttendanceSettings, DEFAULT_ATTENDANCE_SETTINGS, getDailyPasscode } from '../lib/attendanceService';
-import { UserCheck, Plus, Trash2, Edit2, X, Check, AlertTriangle, Printer, User, QrCode, ClipboardList, ShieldAlert, MapPin, Lock, Smartphone, Laptop, KeyRound, Activity, HardDrive, Clock, Save, CheckCircle2 } from 'lucide-react';
+import { UserCheck, Plus, Trash2, Edit2, X, Check, AlertTriangle, Printer, User, QrCode, ClipboardList, ShieldAlert, MapPin, Lock, Smartphone, Laptop, KeyRound, Activity, HardDrive, Clock, Save, CheckCircle2, AlertCircle, Pencil } from 'lucide-react';
 import { formatTimeToAMPM } from '../lib/utils';
 import { StorageService } from '../lib/storage';
 import PruneDataModal from './PruneDataModal';
@@ -220,11 +220,63 @@ export default function ManageAttendanceView() {
     }
   };
 
-  // Edit Record Modal Triggers
-  const handleOpenEdit = (rec: AttendanceRecord) => {
-    setEditingRecord(rec);
-    setEditCheckIn(rec.checkIn || '');
-    setEditCheckOut(rec.checkOut || '');
+  // Helper functions for expected arrival times & punctuality
+  const getTeacherExpectedTime = (teacherIdOrName: string): string => {
+    const t = teachers.find(
+      (x) => x.id === teacherIdOrName || x.name.toLowerCase() === teacherIdOrName.toLowerCase()
+    );
+    const idKey = t ? t.id : teacherIdOrName;
+    const nameKey = t ? t.name : teacherIdOrName;
+    const times = securitySettings.teacherArrivalTimes || {};
+    return times[idKey] || times[nameKey] || securitySettings.defaultArrivalTime || '09:00';
+  };
+
+  const checkArrivalPunctuality = (checkInStr: string, expectedTimeStr: string) => {
+    if (!checkInStr) return { isLate: false, lateMins: 0, statusLabel: '—' };
+    const [ciH, ciM] = checkInStr.split(':').map(Number);
+    const ciMins = (ciH || 0) * 60 + (ciM || 0);
+
+    const [expH, expM] = (expectedTimeStr || '09:00').split(':').map(Number);
+    const expMins = (expH || 0) * 60 + (expM || 0);
+
+    const diff = ciMins - expMins;
+    if (diff > 0) {
+      return {
+        isLate: true,
+        lateMins: diff,
+        statusLabel: `Late (${diff}m)`,
+      };
+    }
+    return {
+      isLate: false,
+      lateMins: 0,
+      statusLabel: 'On Time',
+    };
+  };
+
+  // Edit or Create Record Modal Triggers
+  const handleOpenCreateOrEdit = (
+    teacherId: string,
+    dateStr: string,
+    existingRec?: AttendanceRecord,
+    expectedTime?: string
+  ) => {
+    if (existingRec) {
+      setEditingRecord(existingRec);
+      setEditCheckIn(existingRec.checkIn || '');
+      setEditCheckOut(existingRec.checkOut || '');
+    } else {
+      const draftId = `REC_${teacherId}_${dateStr.replace(/-/g, '')}_${Date.now()}`;
+      setEditingRecord({
+        id: draftId,
+        teacherId,
+        date: dateStr,
+        checkIn: expectedTime || '09:00',
+        checkOut: '17:00',
+      });
+      setEditCheckIn(expectedTime || '09:00');
+      setEditCheckOut('17:00');
+    }
     setEditError('');
   };
 
@@ -241,14 +293,27 @@ export default function ManageAttendanceView() {
       await AttendanceService.editRecord(editingRecord.id, editCheckIn, editCheckOut);
       
       // Update local report list state
-      setReportRecords((prev) =>
-        prev.map((r) =>
-          r.id === editingRecord.id ? { ...r, checkIn: editCheckIn, checkOut: editCheckOut } : r
-        )
-      );
+      setReportRecords((prev) => {
+        const exists = prev.some((r) => r.id === editingRecord.id);
+        if (exists) {
+          return prev.map((r) =>
+            r.id === editingRecord.id ? { ...r, checkIn: editCheckIn, checkOut: editCheckOut } : r
+          );
+        } else {
+          return [
+            ...prev,
+            {
+              id: editingRecord.id,
+              teacherId: editingRecord.teacherId,
+              date: editingRecord.date,
+              checkIn: editCheckIn,
+              checkOut: editCheckOut,
+            },
+          ];
+        }
+      });
 
       setEditingRecord(null);
-      alert('Attendance record updated successfully.');
     } catch (err: any) {
       setEditError(err.message || 'Failed to update attendance record.');
     } finally {
@@ -258,19 +323,19 @@ export default function ManageAttendanceView() {
 
   const handleDeleteRecord = async () => {
     if (!editingRecord) return;
-    if (!confirm('Are you sure you want to delete this attendance record? This cannot be undone.')) {
+    if (!confirm('Are you sure you want to mark absent or delete this record?')) {
       return;
     }
 
     setEditLoading(true);
     setEditError('');
     try {
-      await AttendanceService.deleteRecord(editingRecord.id);
-      
-      // Remove from local list state
-      setReportRecords((prev) => prev.filter((r) => r.id !== editingRecord.id));
+      const existsInList = reportRecords.some((r) => r.id === editingRecord.id);
+      if (existsInList) {
+        await AttendanceService.deleteRecord(editingRecord.id).catch(() => {});
+        setReportRecords((prev) => prev.filter((r) => r.id !== editingRecord.id));
+      }
       setEditingRecord(null);
-      alert('Attendance record deleted successfully.');
     } catch (err: any) {
       setEditError(err.message || 'Failed to delete attendance record.');
     } finally {
@@ -960,7 +1025,7 @@ export default function ManageAttendanceView() {
                     (r) => r.teacherId === teacher.id || r.teacherId === teacher.name
                   );
 
-                  // Calculate stats
+                  // Calculate stats including On Time & Late counts
                   const daysInMonth = new Date(reportYear, reportMonth + 1, 0).getDate();
                   const today = new Date();
                   today.setHours(0, 0, 0, 0);
@@ -968,6 +1033,10 @@ export default function ManageAttendanceView() {
                   let totalMins = 0;
                   let presentCount = 0;
                   let absentCount = 0;
+                  let onTimeCount = 0;
+                  let lateCount = 0;
+
+                  const expectedTimeStr = getTeacherExpectedTime(teacher.id);
 
                   for (let d = 1; d <= daysInMonth; d++) {
                     const dateStr = `${reportYear}-${String(reportMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -978,6 +1047,14 @@ export default function ManageAttendanceView() {
                     if (dayRecs.length > 0) {
                       presentCount++;
                       dayRecs.forEach((r) => {
+                        if (r.checkIn) {
+                          const punct = checkArrivalPunctuality(r.checkIn, expectedTimeStr);
+                          if (punct.isLate) {
+                            lateCount++;
+                          } else {
+                            onTimeCount++;
+                          }
+                        }
                         if (r.checkIn && r.checkOut) {
                           totalMins += calculateMins(r.checkIn, r.checkOut);
                         }
@@ -993,9 +1070,12 @@ export default function ManageAttendanceView() {
                       <div className="p-5 border-b border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
                         <div>
                           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Attendance sheet</div>
-                          <h4 className="serif-title font-bold text-base text-slate-800 flex items-center gap-1.5 mt-0.5">
+                          <h4 className="serif-title font-bold text-base text-slate-800 flex items-center gap-2 mt-0.5">
                             <User size={16} className="text-blue-500" /> {teacher.name}
                             <span className="text-xs font-normal text-slate-500">({teacher.subject || 'No subject'})</span>
+                            <span className="text-xs font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100">
+                              Target Arrival: {formatTimeToAMPM(expectedTimeStr)}
+                            </span>
                           </h4>
                         </div>
                         <span className="text-xs font-semibold text-slate-500 bg-white border border-slate-200 px-3 py-1 rounded-lg">
@@ -1004,20 +1084,30 @@ export default function ManageAttendanceView() {
                       </div>
 
                       {/* Summary blocks */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 border-b border-slate-100">
+                      <div className="grid grid-cols-2 md:grid-cols-5 border-b border-slate-100">
                         <div className="p-4 border-r border-slate-100 text-center">
-                          <div className="text-2xl font-black font-mono text-green-600">{presentCount}</div>
+                          <div className="text-2xl font-black font-mono text-green-600 flex items-center justify-center gap-1">
+                            <CheckCircle2 size={18} className="text-green-500" />
+                            {onTimeCount}
+                          </div>
+                          <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">On-Time Arrivals</div>
+                        </div>
+                        <div className="p-4 border-r border-slate-100 text-center">
+                          <div className="text-2xl font-black font-mono text-amber-600 flex items-center justify-center gap-1">
+                            <AlertCircle size={18} className="text-amber-500" />
+                            {lateCount}
+                          </div>
+                          <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">Late Arrivals</div>
+                        </div>
+                        <div className="p-4 border-r border-slate-100 text-center">
+                          <div className="text-2xl font-black font-mono text-slate-700">{presentCount}</div>
                           <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">Days Present</div>
                         </div>
                         <div className="p-4 border-r border-slate-100 text-center">
                           <div className="text-2xl font-black font-mono text-red-500">{absentCount}</div>
                           <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">Days Absent</div>
                         </div>
-                        <div className="p-4 border-r border-slate-100 text-center">
-                          <div className="text-2xl font-black font-mono text-slate-700">{presentCount + absentCount}</div>
-                          <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">Total Days</div>
-                        </div>
-                        <div className="p-4 text-center">
+                        <div className="p-4 text-center col-span-2 md:col-span-1 border-t md:border-t-0 border-slate-100">
                           <div className="text-2xl font-black font-mono text-blue-600">{formatMins(totalMins)}</div>
                           <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">Hours Worked</div>
                         </div>
@@ -1030,10 +1120,12 @@ export default function ManageAttendanceView() {
                             <tr className="bg-slate-50/50 border-b border-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                               <th className="p-3 pl-5">Date</th>
                               <th className="p-3">Weekday</th>
+                              <th className="p-3">Target Arrival</th>
                               <th className="p-3">Check-In</th>
                               <th className="p-3">Check-Out</th>
                               <th className="p-3">Total Hours</th>
-                              <th className="p-3 pr-5 text-right">Status / Edit</th>
+                              <th className="p-3">Arrival Status</th>
+                              <th className="p-3 pr-5 text-right">Action</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1048,26 +1140,33 @@ export default function ManageAttendanceView() {
                               if (dayRecs.length > 0) {
                                 return dayRecs.map((r, subIdx) => {
                                   const hoursVal = r.checkIn && r.checkOut ? formatMins(calculateMins(r.checkIn, r.checkOut)) : '—';
-                                  const isComplete = !!r.checkOut;
+                                  const punct = checkArrivalPunctuality(r.checkIn, expectedTimeStr);
                                   return (
                                     <tr key={`${r.id}-${subIdx}`} className="border-b border-slate-100 hover:bg-slate-50/50">
                                       <td className="p-3 pl-5 font-mono text-slate-700 font-semibold">{String(dNum).padStart(2, '0')}</td>
                                       <td className="p-3 text-slate-500">{dayName}</td>
+                                      <td className="p-3 text-slate-500 font-mono text-[11px]">{formatTimeToAMPM(expectedTimeStr)}</td>
                                       <td className="p-3 text-slate-800 font-medium">{r.checkIn ? formatTimeToAMPM(r.checkIn) : '—'}</td>
                                       <td className="p-3 text-slate-800 font-medium">{r.checkOut ? formatTimeToAMPM(r.checkOut) : '—'}</td>
                                       <td className="p-3 font-mono text-slate-600 font-medium">{hoursVal}</td>
-                                      <td className="p-3 pr-5 text-right flex items-center justify-end gap-2 h-11">
-                                        <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                          isComplete ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                                        }`}>
-                                          {isComplete ? 'Complete' : 'Open'}
-                                        </span>
+                                      <td className="p-3">
+                                        {punct.isLate ? (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800" title={`Target: ${formatTimeToAMPM(expectedTimeStr)}, Arrived: ${formatTimeToAMPM(r.checkIn)}`}>
+                                            <AlertCircle size={10} /> Late ({punct.lateMins}m)
+                                          </span>
+                                        ) : (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700">
+                                            <CheckCircle2 size={10} /> On Time
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="p-3 pr-5 text-right">
                                         <button
-                                          onClick={() => handleOpenEdit(r)}
-                                          className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-100 cursor-pointer transition-colors"
-                                          title="Adjust times or delete"
+                                          onClick={() => handleOpenCreateOrEdit(teacher.id, dateStr, r, expectedTimeStr)}
+                                          className="px-2 py-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-blue-200 rounded transition-all cursor-pointer inline-flex items-center gap-1 shadow-2xs"
+                                          title="Edit check-in or check-out times"
                                         >
-                                          <Edit2 size={12} />
+                                          <Pencil size={12} /> Edit
                                         </button>
                                       </td>
                                     </tr>
@@ -1075,18 +1174,30 @@ export default function ManageAttendanceView() {
                                 });
                               } else {
                                 return (
-                                  <tr key={dateStr} className={`border-b border-slate-100 ${isPast ? 'opacity-40' : 'opacity-20'}`}>
+                                  <tr key={dateStr} className={`border-b border-slate-100 hover:bg-slate-50/80 ${isPast ? 'opacity-80' : 'opacity-40'}`}>
                                     <td className="p-3 pl-5 font-mono text-slate-500">{String(dNum).padStart(2, '0')}</td>
                                     <td className="p-3 text-slate-400">{dayName}</td>
-                                    <td colSpan={3} className="p-3 text-slate-400 italic">
-                                      {isPast ? 'Absent' : '—'}
-                                    </td>
-                                    <td className="p-3 pr-5 text-right">
-                                      {isPast && (
-                                        <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-600">
+                                    <td className="p-3 text-slate-400 font-mono text-[11px]">{formatTimeToAMPM(expectedTimeStr)}</td>
+                                    <td className="p-3 text-slate-400 italic">—</td>
+                                    <td className="p-3 text-slate-400 italic">—</td>
+                                    <td className="p-3 font-mono text-slate-400">—</td>
+                                    <td className="p-3">
+                                      {isPast ? (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-600">
                                           Absent
                                         </span>
+                                      ) : (
+                                        <span className="text-slate-300 text-[11px]">—</span>
                                       )}
+                                    </td>
+                                    <td className="p-3 pr-5 text-right">
+                                      <button
+                                        onClick={() => handleOpenCreateOrEdit(teacher.id, dateStr, undefined, expectedTimeStr)}
+                                        className="px-2 py-1 text-[11px] font-semibold text-slate-600 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 hover:border-blue-200 rounded transition-all cursor-pointer inline-flex items-center gap-1 shadow-2xs"
+                                        title="Log or edit attendance for this absent day"
+                                      >
+                                        <Pencil size={12} /> Edit
+                                      </button>
                                     </td>
                                   </tr>
                                 );
@@ -1107,10 +1218,10 @@ export default function ManageAttendanceView() {
       {editingRecord && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl border border-slate-200 p-6 w-full max-w-sm shadow-xl space-y-4">
-            <div className="flex justify-between items-center border-b pb-2">
+            <div className="flex justify-between items-center border-b pb-3">
               <div>
-                <h3 className="serif-title font-bold text-slate-800 text-base">Adjust Record Times</h3>
-                <p className="text-[10px] text-slate-400 mt-0.5">Date: {editingRecord.date}</p>
+                <h3 className="serif-title font-bold text-slate-800 text-base">Edit Attendance Record</h3>
+                <p className="text-[11px] text-slate-500 mt-0.5 font-medium">Date: <span className="font-mono font-bold text-slate-700">{editingRecord.date}</span></p>
               </div>
               <button
                 onClick={() => setEditingRecord(null)}
@@ -1120,25 +1231,51 @@ export default function ManageAttendanceView() {
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Check-In</label>
-                <input
-                  type="time"
-                  className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500 bg-white"
-                  value={editCheckIn}
-                  onChange={(e) => setEditCheckIn(e.target.value)}
-                />
+            <div className="space-y-3">
+              <div className="p-2.5 bg-blue-50/60 border border-blue-100 rounded-xl flex items-center justify-between text-xs">
+                <span className="text-slate-600 font-medium">Target Arrival:</span>
+                <span className="font-mono font-bold text-blue-700">{formatTimeToAMPM(getTeacherExpectedTime(editingRecord.teacherId))}</span>
               </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Check-Out</label>
-                <input
-                  type="time"
-                  className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500 bg-white"
-                  value={editCheckOut}
-                  onChange={(e) => setEditCheckOut(e.target.value)}
-                />
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Check-In</label>
+                  <input
+                    type="time"
+                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500 bg-white"
+                    value={editCheckIn}
+                    onChange={(e) => setEditCheckIn(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Check-Out</label>
+                  <input
+                    type="time"
+                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500 bg-white"
+                    value={editCheckOut}
+                    onChange={(e) => setEditCheckOut(e.target.value)}
+                  />
+                </div>
               </div>
+
+              {editCheckIn && (
+                <div className="flex items-center justify-between text-xs pt-1">
+                  <span className="text-slate-500 font-medium">Status Preview:</span>
+                  {(() => {
+                    const expected = getTeacherExpectedTime(editingRecord.teacherId);
+                    const punct = checkArrivalPunctuality(editCheckIn, expected);
+                    return punct.isLate ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 flex items-center gap-1">
+                        <AlertCircle size={10} /> Late ({punct.lateMins}m)
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700 flex items-center gap-1">
+                        <CheckCircle2 size={10} /> On Time
+                      </span>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
 
             {editError && (
@@ -1151,9 +1288,10 @@ export default function ManageAttendanceView() {
               <button
                 onClick={handleDeleteRecord}
                 disabled={editLoading}
-                className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-0.5"
+                className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1 border border-red-200"
+                title="Mark teacher absent or delete record"
               >
-                <Trash2 size={12} /> Delete
+                <Trash2 size={12} /> Clear / Absent
               </button>
               <div className="flex gap-2">
                 <button
