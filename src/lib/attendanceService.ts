@@ -146,7 +146,7 @@ export const AttendanceService = {
       console.info('Fetching teachers from persistent app storage');
     }
 
-    const storedTeachers = await StorageService.loadKey<AttendanceTeacher[]>('teachers', []);
+    const storedTeachers = await StorageService.loadKey<AttendanceTeacher[]>('attendance_teachers', []);
 
     if (teachers.length > 0) {
       // Preserve any previously stored PIN if remote returned empty PIN
@@ -161,14 +161,14 @@ export const AttendanceService = {
         }
         return t;
       });
-      await StorageService.saveKey('teachers', teachers);
+      await StorageService.saveKey('attendance_teachers', teachers);
     } else {
       teachers = storedTeachers;
     }
 
     if (teachers.length === 0) {
       teachers = DEFAULT_FALLBACK_TEACHERS;
-      await StorageService.saveKey('teachers', teachers);
+      await StorageService.saveKey('attendance_teachers', teachers);
     }
 
     // Ensure every teacher has a valid PIN fallback if still missing
@@ -182,7 +182,7 @@ export const AttendanceService = {
     });
 
     if (pinUpdated) {
-      await StorageService.saveKey('teachers', teachers);
+      await StorageService.saveKey('attendance_teachers', teachers);
     }
 
     return teachers;
@@ -230,7 +230,7 @@ export const AttendanceService = {
     const idx = teachers.findIndex((t) => t.id === id || t.name === id);
     if (idx >= 0) {
       teachers[idx].pin = pin;
-      await StorageService.saveKey('teachers', teachers);
+      await StorageService.saveKey('attendance_teachers', teachers);
       apiCall({ action: 'updateTeacherPin', id, pin }, 5000).catch((e) => console.warn('Sync PIN notice:', e));
     }
   },
@@ -352,9 +352,9 @@ export const AttendanceService = {
     const id = `T_${Date.now()}`;
     const newTeacher: AttendanceTeacher = { id, name, subject, pin };
 
-    const teachers = await StorageService.loadKey<AttendanceTeacher[]>('teachers', []);
+    const teachers = await StorageService.loadKey<AttendanceTeacher[]>('attendance_teachers', []);
     teachers.push(newTeacher);
-    await StorageService.saveKey('teachers', teachers);
+    await StorageService.saveKey('attendance_teachers', teachers);
 
     apiCall({ action: 'addTeacher', name, subject, pin }, 6000).catch((e) => console.warn('Sync addTeacher notice:', e));
     return { id };
@@ -362,9 +362,9 @@ export const AttendanceService = {
 
   // Remove teacher
   async removeTeacher(id: string): Promise<void> {
-    const teachers = await StorageService.loadKey<AttendanceTeacher[]>('teachers', []);
+    const teachers = await StorageService.loadKey<AttendanceTeacher[]>('attendance_teachers', []);
     const updated = teachers.filter((t) => t.id !== id && t.name !== id);
-    await StorageService.saveKey('teachers', updated);
+    await StorageService.saveKey('attendance_teachers', updated);
 
     apiCall({ action: 'removeTeacher', id }, 6000).catch((e) => console.warn('Sync removeTeacher notice:', e));
   },

@@ -44,7 +44,7 @@ export default function DashboardView({
   
   // Requirement 3: Check if class has actually started before marking teacher as busy
   const [requireClassStartedToMarkBusy, setRequireClassStartedToMarkBusy] = useState<boolean>(() => {
-    return localStorage.getItem('require_class_started_busy') !== 'false';
+    return localStorage.getItem('require_class_started_busy') === 'true';
   });
 
   const handleToggleRequireClassStarted = (val: boolean) => {

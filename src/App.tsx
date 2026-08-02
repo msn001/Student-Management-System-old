@@ -294,7 +294,29 @@ export default function App() {
         const loadedAdjustments = await StorageService.loadKey<Record<string, Record<string, { time?: string; duration?: number; teacherId?: string; isCancelled?: boolean }>>>('dailyAdjustments', {});
         const loadedLogo = await StorageService.loadKey<string>('schoolLogo', '');
 
-        setTeachers(loadedTeachers);
+        // Reconstruct or preserve any school teachers referenced in slots that might have been missing or overwritten
+        const teacherMap = new Map<string, Teacher>();
+        loadedTeachers.forEach((t) => {
+          if (t && t.id && t.name) {
+            teacherMap.set(t.id, { id: t.id, name: t.name });
+          }
+        });
+
+        loadedSlots.forEach((s) => {
+          if (s.teacherId && !teacherMap.has(s.teacherId)) {
+            // Restore missing teacher referenced in slot
+            const restoredName = s.teacherId.startsWith('t') && !isNaN(Number(s.teacherId.slice(1)))
+              ? `Teacher ${s.teacherId.slice(1)}`
+              : s.teacherId;
+            teacherMap.set(s.teacherId, { id: s.teacherId, name: restoredName });
+          }
+        });
+
+        const safeTeachers = Array.from(teacherMap.values());
+        setTeachers(safeTeachers);
+        if (safeTeachers.length > loadedTeachers.length) {
+          StorageService.saveKey('teachers', safeTeachers).catch(() => {});
+        }
         setStudents(loadedStudents);
         setSlots(loadedSlots);
         setStudentProfiles(loadedProfiles);
