@@ -516,7 +516,7 @@ export default function App() {
 
         {/* Left Sidebar - Desktop & Mobile Drawer */}
         <aside className={`
-          fixed md:sticky top-0 left-0 h-screen w-72 bg-slate-900 text-white shrink-0 border-r border-slate-800 flex flex-col z-50 transition-transform duration-300 no-print
+          fixed top-0 left-0 h-screen w-72 bg-slate-900 text-white shrink-0 border-r border-slate-800 flex flex-col z-50 transition-transform duration-300 no-print
           ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         `}>
           <div className="p-6 border-b border-slate-800 flex items-center gap-3">
@@ -687,7 +687,7 @@ export default function App() {
         </aside>
 
         {/* Right Panel Main Area */}
-        <div className="flex-1 flex flex-col min-h-screen bg-slate-50 overflow-hidden">
+        <div className="flex-1 flex flex-col min-h-screen bg-slate-50 overflow-hidden md:ml-72">
           
           {/* Top Header Bar */}
           <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 md:px-8 shrink-0 no-print z-10 shadow-xs">
