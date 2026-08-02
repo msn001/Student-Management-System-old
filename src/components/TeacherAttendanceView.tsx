@@ -81,104 +81,6 @@ export default function TeacherAttendanceView() {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState('');
 
-  // Editing individual report row state
-  const [editingRow, setEditingRow] = useState<{
-    teacherId: string;
-    dateStr: string;
-    recordId?: string;
-  } | null>(null);
-
-  const [editCheckIn, setEditCheckIn] = useState('');
-  const [editCheckOut, setEditCheckOut] = useState('');
-  const [rowSaving, setRowSaving] = useState(false);
-
-  const startEditRow = (teacherId: string, dateStr: string, existingRec?: AttendanceRecord, expectedTime?: string) => {
-    setEditingRow({
-      teacherId,
-      dateStr,
-      recordId: existingRec?.id,
-    });
-    setEditCheckIn(existingRec?.checkIn || expectedTime || '09:00');
-    setEditCheckOut(existingRec?.checkOut || '17:00');
-  };
-
-  const cancelEditRow = () => {
-    setEditingRow(null);
-    setEditCheckIn('');
-    setEditCheckOut('');
-  };
-
-  const saveRowEdit = async (forceClear = false) => {
-    if (!editingRow) return;
-    setRowSaving(true);
-    const { teacherId, dateStr, recordId } = editingRow;
-
-    const finalCheckIn = forceClear ? '' : editCheckIn.trim();
-    const finalCheckOut = forceClear ? '' : editCheckOut.trim();
-
-    try {
-      if (!finalCheckIn && !finalCheckOut) {
-        // Mark as absent: delete or clear record
-        if (recordId) {
-          await AttendanceService.deleteRecord(recordId, dateStr).catch(() => {});
-          setReportRecords((prev) => prev.filter((r) => r.id !== recordId));
-          setTodayRecords((prev) => prev.filter((r) => r.id !== recordId));
-        }
-      } else {
-        const recId = recordId || `REC_${teacherId}_${dateStr.replace(/-/g, '')}_${Date.now()}`;
-        const newRec: AttendanceRecord = {
-          id: recId,
-          teacherId,
-          date: dateStr,
-          checkIn: finalCheckIn,
-          checkOut: finalCheckOut,
-        };
-
-        // Send to Apps Script service and persistent storage
-        await AttendanceService.editRecord(recId, finalCheckIn, finalCheckOut, teacherId, dateStr).catch((err) => {
-          console.warn('Backend editRecord notice:', err);
-        });
-
-        // Update report state immediately in real-time
-        setReportRecords((prev) => {
-          const idx = prev.findIndex((r) => r.id === recId || (r.teacherId === teacherId && r.date === dateStr));
-          if (idx >= 0) {
-            const copy = [...prev];
-            copy[idx] = newRec;
-            return copy;
-          }
-          return [...prev, newRec];
-        });
-
-        // Update today records if editing today
-        if (dateStr === getLocalDateString()) {
-          setTodayRecords((prev) => {
-            const idx = prev.findIndex((r) => r.id === recId || (r.teacherId === teacherId && r.date === dateStr));
-            if (idx >= 0) {
-              const copy = [...prev];
-              copy[idx] = newRec;
-              return copy;
-            }
-            return [...prev, newRec];
-          });
-        }
-      }
-    } catch (err) {
-      console.error('Error saving row edit:', err);
-    } finally {
-      setRowSaving(false);
-      setEditingRow(null);
-    }
-  };
-
-  // 1. Tick Clock
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
   // Silent real-time background sync
   const syncLiveData = async () => {
     try {
@@ -967,7 +869,6 @@ export default function TeacherAttendanceView() {
                               <th className="p-3">Check-Out</th>
                               <th className="p-3">Total Hours</th>
                               <th className="p-3">Arrival Status</th>
-                              <th className="p-3 pr-5 text-right no-print">Action</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -978,84 +879,6 @@ export default function TeacherAttendanceView() {
                               const dayName = dateObj.toLocaleDateString(undefined, { weekday: 'short' });
                               const dayRecs = tRecs.filter((r) => r.date === dateStr);
                               const isPast = dateObj <= today;
-                              const isEditing = editingRow?.teacherId === teacher.id && editingRow?.dateStr === dateStr;
-
-                              if (isEditing) {
-                                return (
-                                  <tr key={dateStr} className="border-b border-blue-200 bg-blue-50/40">
-                                    <td className="p-3 pl-5 font-mono text-slate-700 font-semibold">{String(dNum).padStart(2, '0')}</td>
-                                    <td className="p-3 text-slate-500">{dayName}</td>
-                                    <td className="p-3 text-slate-500 font-mono text-[11px]">{formatTimeToAMPM(expectedTimeStr)}</td>
-                                    <td className="p-2">
-                                      <input
-                                        type="time"
-                                        value={editCheckIn}
-                                        onChange={(e) => setEditCheckIn(e.target.value)}
-                                        className="px-2 py-1 border border-blue-300 rounded font-mono text-xs font-bold bg-white text-slate-800 focus:outline-none focus:border-blue-600 shadow-2xs"
-                                      />
-                                    </td>
-                                    <td className="p-2">
-                                      <input
-                                        type="time"
-                                        value={editCheckOut}
-                                        onChange={(e) => setEditCheckOut(e.target.value)}
-                                        className="px-2 py-1 border border-blue-300 rounded font-mono text-xs font-bold bg-white text-slate-800 focus:outline-none focus:border-blue-600 shadow-2xs"
-                                      />
-                                    </td>
-                                    <td className="p-3 font-mono text-slate-700 font-bold text-xs">
-                                      {editCheckIn && editCheckOut ? formatMins(calculateMins(editCheckIn, editCheckOut)) : '—'}
-                                    </td>
-                                    <td className="p-3">
-                                      {editCheckIn ? (
-                                        (() => {
-                                          const p = checkArrivalPunctuality(editCheckIn, expectedTimeStr);
-                                          return p.isLate ? (
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800">
-                                              <AlertCircle size={10} /> Late ({p.lateMins}m)
-                                            </span>
-                                          ) : (
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700">
-                                              <CheckCircle2 size={10} /> On Time
-                                            </span>
-                                          );
-                                        })()
-                                      ) : (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-600">
-                                          Absent
-                                        </span>
-                                      )}
-                                    </td>
-                                    <td className="p-2 pr-5 text-right no-print">
-                                      <div className="flex items-center justify-end gap-1.5">
-                                        <button
-                                          onClick={() => saveRowEdit(false)}
-                                          disabled={rowSaving}
-                                          className="px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
-                                          title="Save attendance record"
-                                        >
-                                          <Check size={13} /> Save
-                                        </button>
-                                        <button
-                                          onClick={() => saveRowEdit(true)}
-                                          disabled={rowSaving}
-                                          className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded text-xs font-semibold cursor-pointer transition-colors"
-                                          title="Mark as absent (clear record)"
-                                        >
-                                          Absent
-                                        </button>
-                                        <button
-                                          onClick={cancelEditRow}
-                                          disabled={rowSaving}
-                                          className="p-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded cursor-pointer transition-colors"
-                                          title="Cancel"
-                                        >
-                                          <X size={14} />
-                                        </button>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                );
-                              }
 
                               if (dayRecs.length > 0) {
                                 return dayRecs.map((r, subIdx) => {
@@ -1080,15 +903,6 @@ export default function TeacherAttendanceView() {
                                           </span>
                                         )}
                                       </td>
-                                      <td className="p-3 pr-5 text-right no-print">
-                                        <button
-                                          onClick={() => startEditRow(teacher.id, dateStr, r, expectedTimeStr)}
-                                          className="px-2 py-1 text-[11px] font-medium text-slate-600 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 hover:border-blue-200 rounded transition-all cursor-pointer inline-flex items-center gap-1"
-                                          title="Edit check-in/out times"
-                                        >
-                                          <Pencil size={12} /> Edit
-                                        </button>
-                                      </td>
                                     </tr>
                                   );
                                 });
@@ -1109,15 +923,6 @@ export default function TeacherAttendanceView() {
                                       ) : (
                                         <span className="text-slate-300 text-[11px]">—</span>
                                       )}
-                                    </td>
-                                    <td className="p-3 pr-5 text-right no-print">
-                                      <button
-                                        onClick={() => startEditRow(teacher.id, dateStr, undefined, expectedTimeStr)}
-                                        className="px-2 py-1 text-[11px] font-medium text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 hover:border-blue-200 rounded transition-all cursor-pointer inline-flex items-center gap-1"
-                                        title="Log or edit attendance for this day"
-                                      >
-                                        <Pencil size={12} /> Edit
-                                      </button>
                                     </td>
                                   </tr>
                                 );

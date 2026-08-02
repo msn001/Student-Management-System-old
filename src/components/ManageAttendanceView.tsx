@@ -237,14 +237,19 @@ export default function ManageAttendanceView() {
     setEditLoading(true);
     setEditError('');
     try {
-      await AttendanceService.editRecord(editingRecord.id, editCheckIn, editCheckOut);
+      await AttendanceService.editRecord(editingRecord.id, editCheckIn, editCheckOut, editingRecord.teacherId, editingRecord.date);
       
       // Update local report list state
-      setReportRecords((prev) =>
-        prev.map((r) =>
-          r.id === editingRecord.id ? { ...r, checkIn: editCheckIn, checkOut: editCheckOut } : r
-        )
-      );
+      setReportRecords((prev) => {
+        const idx = prev.findIndex((r) => r.id === editingRecord.id || (r.teacherId === editingRecord.teacherId && r.date === editingRecord.date));
+        const updated = { ...editingRecord, checkIn: editCheckIn, checkOut: editCheckOut };
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = updated;
+          return copy;
+        }
+        return [...prev, updated];
+      });
 
       setEditingRecord(null);
       alert('Attendance record updated successfully.');
@@ -264,10 +269,10 @@ export default function ManageAttendanceView() {
     setEditLoading(true);
     setEditError('');
     try {
-      await AttendanceService.deleteRecord(editingRecord.id);
+      await AttendanceService.deleteRecord(editingRecord.id, editingRecord.date);
       
       // Remove from local list state
-      setReportRecords((prev) => prev.filter((r) => r.id !== editingRecord.id));
+      setReportRecords((prev) => prev.filter((r) => r.id !== editingRecord.id && !(r.teacherId === editingRecord.teacherId && r.date === editingRecord.date)));
       setEditingRecord(null);
       alert('Attendance record deleted successfully.');
     } catch (err: any) {
@@ -895,18 +900,33 @@ export default function ManageAttendanceView() {
                                 });
                               } else {
                                 return (
-                                  <tr key={dateStr} className={`border-b border-slate-100 ${isPast ? 'opacity-40' : 'opacity-20'}`}>
+                                  <tr key={dateStr} className={`border-b border-slate-100 ${isPast ? 'opacity-70' : 'opacity-40'}`}>
                                     <td className="p-3 pl-5 font-mono text-slate-500">{String(dNum).padStart(2, '0')}</td>
                                     <td className="p-3 text-slate-400">{dayName}</td>
                                     <td colSpan={3} className="p-3 text-slate-400 italic">
                                       {isPast ? 'Absent' : '—'}
                                     </td>
-                                    <td className="p-3 pr-5 text-right">
+                                    <td className="p-3 pr-5 text-right flex items-center justify-end gap-2 h-11">
                                       {isPast && (
                                         <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-600">
                                           Absent
                                         </span>
                                       )}
+                                      <button
+                                        onClick={() =>
+                                          handleOpenEdit({
+                                            id: `REC_${teacher.id}_${dateStr.replace(/-/g, '')}`,
+                                            teacherId: teacher.id,
+                                            date: dateStr,
+                                            checkIn: '09:00',
+                                            checkOut: '17:00',
+                                          })
+                                        }
+                                        className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-100 cursor-pointer transition-colors"
+                                        title="Log or adjust attendance for this date"
+                                      >
+                                        <Edit2 size={12} />
+                                      </button>
                                     </td>
                                   </tr>
                                 );
