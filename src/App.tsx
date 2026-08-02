@@ -15,7 +15,8 @@ import ManageAttendanceView from './components/ManageAttendanceView';
 import StudentAbsenceView from './components/StudentAbsenceView';
 import PruneDataModal from './components/PruneDataModal';
 import StorageUsageCard from './components/StorageUsageCard';
-import { BookOpen, Calendar, Clock, Clipboard, Users, GraduationCap, Menu, X, Lock, Unlock, Settings, Key, CalendarClock, Fingerprint, UserCheck, UserX, Upload, Trash2, Image, HardDrive } from 'lucide-react';
+import AdminRemindersModal from './components/AdminRemindersModal';
+import { BookOpen, Calendar, Clock, Clipboard, Users, GraduationCap, Menu, X, Lock, Unlock, Settings, Key, CalendarClock, Fingerprint, UserCheck, UserX, Upload, Trash2, Image, HardDrive, Bell } from 'lucide-react';
 
 const LOCKED_TABS = ['timetable', 'people', 'adjustments', 'manage_attendance', 'student_absence'];
 
@@ -53,6 +54,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isAdminRemindersOpen, setIsAdminRemindersOpen] = useState(false);
   const [schoolLogo, setSchoolLogo] = useState(() => {
     return localStorage.getItem('lesson_register_logo') || '';
   });
@@ -599,6 +601,17 @@ export default function App() {
               </span>
               
               <div className="flex gap-2 items-center">
+                {isUnlocked && (
+                  <button
+                    onClick={() => setIsAdminRemindersOpen(true)}
+                    className="p-1 hover:text-amber-400 text-amber-300 hover:bg-slate-800 rounded transition-colors cursor-pointer flex items-center gap-1 border border-amber-500/30 px-1.5 py-0.5 bg-amber-500/10 text-xs font-extrabold"
+                    title="Admin Reminders & Alerts"
+                  >
+                    <Bell size={12} />
+                    <span>Reminders</span>
+                  </button>
+                )}
+
                 <button 
                   onClick={() => {
                     if (isUnlocked) {
@@ -684,6 +697,7 @@ export default function App() {
                   onUpdateDashDate={handleUpdateDashDate}
                   dailyAdjustments={dailyAdjustments}
                   isUnlocked={isUnlocked}
+                  onOpenAdminReminders={() => setIsAdminRemindersOpen(true)}
                   onRequireUnlock={() => {
                     setPendingTab(null);
                     setPinInput('');
@@ -972,6 +986,12 @@ export default function App() {
           // Re-trigger active months refresh or local state if needed
           window.location.reload();
         }}
+      />
+
+      {/* Admin Reminders Modal */}
+      <AdminRemindersModal
+        isOpen={isAdminRemindersOpen}
+        onClose={() => setIsAdminRemindersOpen(false)}
       />
     </div>
   );

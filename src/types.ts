@@ -41,3 +41,14 @@ export interface StudentProfile {
   updatedBy: string; // teacherId
   updatedAt: string; // "YYYY-MM-DD"
 }
+
+export interface AdminReminder {
+  id: string;
+  title: string;
+  date: string; // "YYYY-MM-DD"
+  time: string; // "HH:MM" (24-hour format)
+  description?: string;
+  priority?: 'normal' | 'high' | 'urgent';
+  createdAt: string;
+  isCompleted?: boolean;
+}

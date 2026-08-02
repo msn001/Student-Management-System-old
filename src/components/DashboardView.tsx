@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { ClassSlot, Student, Teacher, LessonEntry } from '../types';
 import { StorageService } from '../lib/storage';
-import { Bell, Calendar, ClipboardList, AlertCircle, Video, Clock, Lock, Users, Check, X } from 'lucide-react';
+import { Bell, Calendar, ClipboardList, AlertCircle, Video, Clock, Lock, Users, Check, X, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { formatTimeToAMPM, getSlotsForDate } from '../lib/utils';
+import AdminRemindersDashboardBanner from './AdminRemindersDashboardBanner';
 
 interface DashboardViewProps {
   slots: ClassSlot[];
@@ -16,6 +17,7 @@ interface DashboardViewProps {
   dailyAdjustments: Record<string, Record<string, { time?: string; duration?: number; teacherId?: string; isCancelled?: boolean }>>;
   isUnlocked: boolean;
   onRequireUnlock: () => void;
+  onOpenAdminReminders?: () => void;
 }
 
 const SCHOOL_DAY_CUTOFF_HOUR = 10;
@@ -32,12 +34,23 @@ export default function DashboardView({
   dailyAdjustments,
   isUnlocked,
   onRequireUnlock,
+  onOpenAdminReminders,
 }: DashboardViewProps) {
   const [selectedDateStr, setSelectedDateStr] = useState(dashDate);
   const [selectedTeacherId, setSelectedTeacherId] = useState('');
   const [notifyEnabled, setNotifyEnabled] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [studentSearchQuery, setStudentSearchQuery] = useState('');
+  
+  // Requirement 3: Check if class has actually started before marking teacher as busy
+  const [requireClassStartedToMarkBusy, setRequireClassStartedToMarkBusy] = useState<boolean>(() => {
+    return localStorage.getItem('require_class_started_busy') !== 'false';
+  });
+
+  const handleToggleRequireClassStarted = (val: boolean) => {
+    setRequireClassStartedToMarkBusy(val);
+    localStorage.setItem('require_class_started_busy', String(val));
+  };
 
   const [isCustomCheckActive, setIsCustomCheckActive] = useState(false);
   const [customCheckDate, setCustomCheckDate] = useState(() => {
@@ -303,10 +316,42 @@ export default function DashboardView({
         return queryMin >= startMin && queryMin < endMin;
       });
 
+      let isFree = !activeSlotForTeacher;
+      let statusReason = isFree ? 'Available' : 'Class Scheduled';
+
+      if (activeSlotForTeacher) {
+        // Look up attendance log entry for this slot on activeCheckDateStr
+        const logEntry = monthLogs[activeSlotForTeacher.id]?.[activeCheckDateStr];
+
+        if (logEntry?.status === 'present') {
+          // Class has officially started & student is present!
+          isFree = false;
+          statusReason = 'Class in Progress (Present)';
+        } else if (logEntry?.status === 'absent') {
+          // Student is absent! Teacher is actually free!
+          isFree = true;
+          statusReason = 'Free (Student Absent)';
+        } else if (logEntry?.status === 'leave') {
+          // Student on leave! Teacher is actually free!
+          isFree = true;
+          statusReason = 'Free (Student On Leave)';
+        } else {
+          // Not logged / not started yet
+          if (requireClassStartedToMarkBusy) {
+            isFree = true;
+            statusReason = 'Free (Class Not Started Yet)';
+          } else {
+            isFree = false;
+            statusReason = 'Busy (Slot Scheduled)';
+          }
+        }
+      }
+
       return {
         teacher: t,
-        isFree: !activeSlotForTeacher,
+        isFree,
         slot: activeSlotForTeacher,
+        statusReason,
       };
     });
 
@@ -443,7 +488,7 @@ export default function DashboardView({
 
             {/* Scrollable list of teachers */}
             <div className="max-h-[380px] overflow-y-auto pr-1 space-y-2 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
-              {teacherAvailabilityList.map(({ teacher, isFree, slot }) => {
+              {teacherAvailabilityList.map(({ teacher, isFree, slot, statusReason }) => {
                 const student = slot ? students.find((st) => st.id === slot.studentId) : null;
                 const endTime = slot ? getEndTimeStr(slot.time, slot.duration) : '';
 
@@ -459,20 +504,24 @@ export default function DashboardView({
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-bold text-slate-800">{teacher.name}</span>
                       {isFree ? (
-                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-md flex items-center gap-1">
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-md flex items-center gap-1" title={statusReason}>
                           🟢 Free
                         </span>
                       ) : (
-                        <span className="text-[10px] font-bold text-red-700 bg-red-50 border border-red-100 px-2 py-0.5 rounded-md flex items-center gap-1">
+                        <span className="text-[10px] font-bold text-red-700 bg-red-50 border border-red-100 px-2 py-0.5 rounded-md flex items-center gap-1" title={statusReason}>
                           🔴 Busy
                         </span>
                       )}
                     </div>
 
-                    {!isFree && slot && (
+                    <div className="text-[10px] text-slate-500 font-semibold mt-1">
+                      Status: <span className={isFree ? 'text-emerald-700 font-bold' : 'text-red-700 font-bold'}>{statusReason}</span>
+                    </div>
+
+                    {slot && (
                       <div className="mt-1.5 pt-1.5 border-t border-dashed border-slate-100 space-y-0.5 text-[11px] text-slate-500 font-medium">
                         <div>
-                          Teaching <span className="font-bold text-slate-700">{student?.name || 'Removed'}</span>
+                          Student: <span className="font-bold text-slate-700">{student?.name || 'Removed'}</span>
                         </div>
                         <div className="flex justify-between items-center text-[10px] text-slate-400">
                           <span className="bg-slate-100 px-1 py-0.5 rounded font-bold">{slot.subject}</span>
@@ -483,6 +532,21 @@ export default function DashboardView({
                   </div>
                 );
               })}
+            </div>
+
+            {/* Attendance Rule Toggle */}
+            <div className="pt-2 border-t border-slate-100">
+              <label className="flex items-start gap-2 text-[11px] text-slate-600 font-medium cursor-pointer hover:text-slate-900 transition-colors">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  checked={requireClassStartedToMarkBusy}
+                  onChange={(e) => handleToggleRequireClassStarted(e.target.checked)}
+                />
+                <span>
+                  <strong>Check class started:</strong> Only mark teacher busy if class has started (or present). Shows free if student absent or class not started.
+                </span>
+              </label>
             </div>
 
             {/* Custom Availability Checker Form */}
@@ -531,6 +595,12 @@ export default function DashboardView({
 
         {/* Right Column: Main Dashboard Content */}
         <div className="lg:col-span-3 space-y-6">
+          {/* Admin Reminders Banner (Admin Only) */}
+          <AdminRemindersDashboardBanner
+            isUnlocked={isUnlocked}
+            onOpenAdminReminders={onOpenAdminReminders}
+          />
+
           {/* Starting Soon Alerts */}
           {isLiveSession && upcomingAlerts.length > 0 && (
             <div className="space-y-2">

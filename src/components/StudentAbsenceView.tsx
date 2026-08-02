@@ -38,7 +38,7 @@ export default function StudentAbsenceView({
   const [timeScope, setTimeScope] = useState<'today' | 'week'>('today');
   const [statusFilter, setStatusFilter] = useState<'all' | 'absent' | 'leave'>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeSubTab, setActiveSubTab] = useState<'logs' | 'daily_schedule'>('logs');
+  const [activeSubTab, setActiveSubTab] = useState<'logs' | 'last_week_absent' | 'daily_schedule'>('logs');
   
   const [loading, setLoading] = useState(false);
   const [logsCache, setLogsCache] = useState<Record<string, Record<string, Record<string, LessonEntry>>>>({});
@@ -487,6 +487,27 @@ export default function StudentAbsenceView({
           Absence & Leave Logs
         </button>
         <button
+          onClick={() => {
+            setActiveSubTab('last_week_absent');
+            setTimeScope('week');
+            setStatusFilter('absent');
+          }}
+          className={`px-5 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
+            activeSubTab === 'last_week_absent'
+              ? 'border-red-600 text-red-600 bg-red-50/50'
+              : 'border-transparent text-slate-600 hover:text-red-600'
+          }`}
+        >
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+          </span>
+          <span>⚡ 1-Click: Last 1 Week Absentees</span>
+          <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-red-100 text-red-800 font-extrabold rounded-full">
+            {records.filter(r => r.status === 'absent').length}
+          </span>
+        </button>
+        <button
           onClick={() => setActiveSubTab('daily_schedule')}
           className={`px-5 py-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer ${
             activeSubTab === 'daily_schedule'
@@ -497,6 +518,113 @@ export default function StudentAbsenceView({
           Daily Schedule Summary
         </button>
       </div>
+
+      {/* Tab B: 1-CLICK LAST 1 WEEK ABSENTEES */}
+      {activeSubTab === 'last_week_absent' && (
+        <div className="space-y-4">
+          <div className="bg-red-50/80 border-2 border-red-200 p-4 rounded-xl flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-red-600 text-white rounded-xl shadow-xs">
+                <UserMinus size={22} />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-sm text-red-950 uppercase tracking-wider">
+                  Students Absent in the Last 1 Week (7 Days)
+                </h3>
+                <p className="text-xs text-red-800 font-medium">
+                  Instant 1-click summary of all recorded student absences over the past 7 days up to {formatDateNice(referenceDate)}.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handlePrint}
+                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs cursor-pointer shadow-xs flex items-center gap-1.5"
+              >
+                <Printer size={14} />
+                <span>Print 1-Week Absent Report</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Stats Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-white border border-slate-200 p-3.5 rounded-xl text-center">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Total Class Absences</span>
+              <span className="text-xl font-extrabold text-red-600">{records.filter(r => r.status === 'absent').length}</span>
+            </div>
+            <div className="bg-white border border-slate-200 p-3.5 rounded-xl text-center">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Unique Students Absent</span>
+              <span className="text-xl font-extrabold text-slate-800">
+                {new Set(records.filter(r => r.status === 'absent').map(r => r.studentName)).size}
+              </span>
+            </div>
+            <div className="bg-white border border-slate-200 p-3.5 rounded-xl text-center">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Date Scope</span>
+              <span className="text-xs font-bold text-slate-700">Past 7 Days</span>
+            </div>
+          </div>
+
+          {/* Table of Absentees */}
+          {records.filter(r => r.status === 'absent').length === 0 ? (
+            <div className="p-8 bg-white border border-dashed border-slate-200 rounded-xl text-center text-slate-500 font-semibold text-xs">
+              🎉 No students were recorded absent in the last 1 week!
+            </div>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
+                  <tr>
+                    <th className="p-3">Date</th>
+                    <th className="p-3">Student Name</th>
+                    <th className="p-3">Teams / ID</th>
+                    <th className="p-3">Subject</th>
+                    <th className="p-3">Class Time</th>
+                    <th className="p-3">Teacher</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3">Remarks</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {records.filter(r => r.status === 'absent').map((rec) => (
+                    <tr key={rec.id} className="hover:bg-red-50/20 transition-colors">
+                      <td className="p-3 font-bold text-slate-900 whitespace-nowrap">
+                        {formatDateNice(rec.dateStr)}
+                      </td>
+                      <td className="p-3 font-extrabold text-slate-900">
+                        {rec.studentName}
+                      </td>
+                      <td className="p-3 font-mono text-[11px] text-slate-600">
+                        {rec.studentTeamsId || '—'}
+                      </td>
+                      <td className="p-3">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getSubjectClass(rec.subject)}`}>
+                          {rec.subject}
+                        </span>
+                      </td>
+                      <td className="p-3 font-mono text-slate-600">
+                        {rec.time} ({rec.duration}m)
+                      </td>
+                      <td className="p-3 font-semibold text-slate-700">
+                        {rec.actualTeacherName}
+                      </td>
+                      <td className="p-3">
+                        <span className="px-2 py-0.5 bg-red-100 text-red-800 border border-red-200 text-[10px] font-extrabold rounded-md uppercase">
+                          Absent
+                        </span>
+                      </td>
+                      <td className="p-3 text-slate-600 italic">
+                        {rec.remarks || 'No remarks provided'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Tab A: ABSENCE & LEAVE LOGS */}
       {activeSubTab === 'logs' && (
