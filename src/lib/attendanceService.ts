@@ -94,6 +94,8 @@ export interface AttendanceSettings {
   lockMobileCheckIn: boolean; // if true, must use authorized kiosk device
   dailyPasscodeEnabled: boolean; // if true, must enter the rotating daily code
   dailyPasscodeSeed: string; // custom seed or string
+  defaultArrivalTime?: string; // e.g. "09:00"
+  teacherArrivalTimes?: Record<string, string>; // teacherId or name -> "HH:MM" 24-hr format
 }
 
 export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettings = {
@@ -104,6 +106,8 @@ export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettings = {
   lockMobileCheckIn: false,
   dailyPasscodeEnabled: false,
   dailyPasscodeSeed: '1234',
+  defaultArrivalTime: '09:00',
+  teacherArrivalTimes: {},
 };
 
 // Generates a 4-digit daily passcode deterministically based on date string and seed
