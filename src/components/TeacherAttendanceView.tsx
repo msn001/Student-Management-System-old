@@ -120,8 +120,9 @@ export default function TeacherAttendanceView() {
       if (!finalCheckIn && !finalCheckOut) {
         // Mark as absent: delete or clear record
         if (recordId) {
-          await AttendanceService.deleteRecord(recordId).catch(() => {});
+          await AttendanceService.deleteRecord(recordId, dateStr).catch(() => {});
           setReportRecords((prev) => prev.filter((r) => r.id !== recordId));
+          setTodayRecords((prev) => prev.filter((r) => r.id !== recordId));
         }
       } else {
         const recId = recordId || `REC_${teacherId}_${dateStr.replace(/-/g, '')}_${Date.now()}`;
@@ -133,12 +134,12 @@ export default function TeacherAttendanceView() {
           checkOut: finalCheckOut,
         };
 
-        // Send to Apps Script service
-        await AttendanceService.editRecord(recId, finalCheckIn, finalCheckOut).catch((err) => {
+        // Send to Apps Script service and persistent storage
+        await AttendanceService.editRecord(recId, finalCheckIn, finalCheckOut, teacherId, dateStr).catch((err) => {
           console.warn('Backend editRecord notice:', err);
         });
 
-        // Update local state immediately
+        // Update report state immediately in real-time
         setReportRecords((prev) => {
           const idx = prev.findIndex((r) => r.id === recId || (r.teacherId === teacherId && r.date === dateStr));
           if (idx >= 0) {
@@ -148,6 +149,19 @@ export default function TeacherAttendanceView() {
           }
           return [...prev, newRec];
         });
+
+        // Update today records if editing today
+        if (dateStr === getLocalDateString()) {
+          setTodayRecords((prev) => {
+            const idx = prev.findIndex((r) => r.id === recId || (r.teacherId === teacherId && r.date === dateStr));
+            if (idx >= 0) {
+              const copy = [...prev];
+              copy[idx] = newRec;
+              return copy;
+            }
+            return [...prev, newRec];
+          });
+        }
       }
     } catch (err) {
       console.error('Error saving row edit:', err);
@@ -164,6 +178,36 @@ export default function TeacherAttendanceView() {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Silent real-time background sync
+  const syncLiveData = async () => {
+    try {
+      const fetchedTeachers = await AttendanceService.getTeachers();
+      if (fetchedTeachers && fetchedTeachers.length > 0) {
+        setTeachers(fetchedTeachers);
+      }
+
+      const nowStr = getLocalDateString();
+      const ydStr = getLocalDateString(new Date(Date.now() - 86400000));
+      
+      const [r1, r2] = await Promise.all([
+        AttendanceService.getRecords(nowStr.slice(0, 7)),
+        AttendanceService.getRecords(ydStr.slice(0, 7))
+      ]);
+
+      const merged = [...r2, ...r1];
+      const seenIds = new Set<string>();
+      const uniques = merged.filter((r) => {
+        if (seenIds.has(r.id)) return false;
+        seenIds.add(r.id);
+        return true;
+      });
+
+      setTodayRecords(uniques);
+    } catch (err) {
+      // Silent pass for background sync
+    }
+  };
 
   // 2. Fetch initial data (teachers + today's attendance logs + security settings)
   const loadData = async () => {
@@ -208,6 +252,11 @@ export default function TeacherAttendanceView() {
 
   useEffect(() => {
     loadData();
+    // Real-time polling interval (every 10 seconds)
+    const pollTimer = setInterval(() => {
+      syncLiveData();
+    }, 10000);
+    return () => clearInterval(pollTimer);
   }, []);
 
   // Keyboard support for PIN Pad

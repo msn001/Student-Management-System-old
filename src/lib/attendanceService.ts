@@ -1,4 +1,4 @@
-// Service to interact with the Google Apps Script Teacher Attendance backend
+import { StorageService } from './storage';
 
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzMBcrZEDAB9_u2pJmLEQlMgTz_566Udq688opiP8G8qPtpBc1rC-z9Ix1homUZJ8cm/exec';
 
@@ -6,7 +6,7 @@ export interface AttendanceTeacher {
   id: string;
   name: string;
   subject?: string;
-  pin?: string; // PIN is only present in current session after adding a teacher
+  pin?: string;
 }
 
 export interface AttendanceRecord {
@@ -17,24 +17,30 @@ export interface AttendanceRecord {
   checkOut: string;
 }
 
-async function apiCall(params: Record<string, string>) {
+// Resilient API Call with AbortController & Timeout
+async function apiCall(params: Record<string, string>, timeoutMs = 6000) {
   if (!SCRIPT_URL) {
     throw new Error('Google Apps Script URL is not configured.');
   }
 
   const url = SCRIPT_URL + '?' + new URLSearchParams(params);
-  
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
     const response = await fetch(url, {
       method: 'GET',
       mode: 'cors',
       headers: {
         'Accept': 'application/json',
-      }
+      },
+      signal: controller.signal,
     });
 
+    clearTimeout(timer);
+
     if (!response.ok) {
-      throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
     const data = await response.json();
@@ -43,22 +49,67 @@ async function apiCall(params: Record<string, string>) {
     }
     return data;
   } catch (error: any) {
-    console.error('Attendance API Error:', error);
-    throw new Error(error.message || 'Network error connecting to Google Sheets.');
+    clearTimeout(timer);
+    const msg = error.name === 'AbortError' 
+      ? 'Server response timed out (Google Sheets slow)' 
+      : (error.message || 'Network error connecting to Google Sheets.');
+    console.warn('Attendance API Notice:', msg);
+    throw new Error(msg);
   }
 }
 
 export const AttendanceService = {
+  // Fetch teachers from Google Apps Script or StorageService
   async getTeachers(): Promise<AttendanceTeacher[]> {
-    const data = await apiCall({ action: 'getTeachers' });
-    return data.teachers || [];
+    try {
+      const data = await apiCall({ action: 'getTeachers' }, 5000);
+      if (data && Array.isArray(data.teachers) && data.teachers.length > 0) {
+        // Normalize
+        const teachers: AttendanceTeacher[] = data.teachers.map((t: any) => ({
+          id: String(t.id || t.name),
+          name: String(t.name || t.id),
+          subject: t.subject || '',
+          pin: t.pin || '',
+        }));
+        await StorageService.saveKey('teachers', teachers);
+        return teachers;
+      }
+    } catch (e) {
+      console.info('Fetching teachers from persistent app storage');
+    }
+    // Fallback to real persistent app teachers
+    return await StorageService.loadKey<AttendanceTeacher[]>('teachers', []);
   },
 
+  // Fetch monthly attendance records
   async getRecords(month: string): Promise<AttendanceRecord[]> {
-    const data = await apiCall({ action: 'getRecords', month });
-    return data.records || [];
+    const mKey = month.slice(0, 7);
+    const storageKey = `attendance_recs_${mKey}`;
+
+    try {
+      const data = await apiCall({ action: 'getRecords', month: mKey }, 6000);
+      if (data && Array.isArray(data.records)) {
+        const records: AttendanceRecord[] = data.records.map((r: any) => ({
+          id: String(r.id || `REC_${r.teacherId}_${r.date}`),
+          teacherId: String(r.teacherId || r.teacher || ''),
+          date: String(r.date || ''),
+          checkIn: String(r.checkIn || ''),
+          checkOut: String(r.checkOut || ''),
+        }));
+
+        await StorageService.saveKey(storageKey, records);
+        return records.filter((r) => r.date.startsWith(mKey));
+      }
+    } catch (e) {
+      console.info(`Fetching ${mKey} records from persistent storage`);
+    }
+
+    // Load from real persistent storage
+    const stored = await StorageService.loadKey<AttendanceRecord[]>(storageKey, []);
+    return stored.filter((r) => r.date.startsWith(mKey));
   },
 
+  // Teacher Scan (Check-in / Check-out)
   async scan(pin: string, date: string, time: string): Promise<{
     action: 'checkIn' | 'checkOut';
     recordId: string;
@@ -66,23 +117,143 @@ export const AttendanceService = {
     date: string;
     time: string;
   }> {
-    return await apiCall({ action: 'scan', pin, date, time });
+    const mKey = date.slice(0, 7);
+    const storageKey = `attendance_recs_${mKey}`;
+
+    // Try remote scan first
+    try {
+      const remoteRes = await apiCall({ action: 'scan', pin, date, time }, 5000);
+      if (remoteRes && remoteRes.recordId) {
+        // Sync with StorageService
+        const records = await StorageService.loadKey<AttendanceRecord[]>(storageKey, []);
+        const recIdx = records.findIndex((r) => r.id === remoteRes.recordId);
+        if (recIdx >= 0) {
+          records[recIdx] = {
+            ...records[recIdx],
+            checkOut: remoteRes.action === 'checkOut' ? time : records[recIdx].checkOut,
+          };
+        } else {
+          records.push({
+            id: remoteRes.recordId,
+            teacherId: remoteRes.teacher,
+            date: remoteRes.date,
+            checkIn: time,
+            checkOut: '',
+          });
+        }
+        await StorageService.saveKey(storageKey, records);
+        return remoteRes;
+      }
+    } catch (err: any) {
+      console.info('Remote scan offline fallback:', err.message);
+    }
+
+    // Local scan engine if remote unavailable
+    const teachers = await StorageService.loadKey<AttendanceTeacher[]>('teachers', []);
+    const matchedTeacher = teachers.find(
+      (t) => t.pin === pin || t.id === pin || t.name.toLowerCase() === pin.toLowerCase()
+    );
+
+    if (!matchedTeacher) {
+      throw new Error('Invalid PIN code. Please check and try again.');
+    }
+
+    const records = await StorageService.loadKey<AttendanceRecord[]>(storageKey, []);
+    const openRecord = records.find(
+      (r) => (r.teacherId === matchedTeacher.id || r.teacherId === matchedTeacher.name) &&
+             r.date === date &&
+             !r.checkOut
+    );
+
+    if (openRecord) {
+      // Check-out
+      openRecord.checkOut = time;
+      await StorageService.saveKey(storageKey, records);
+      return {
+        action: 'checkOut',
+        recordId: openRecord.id,
+        teacher: matchedTeacher.name,
+        date,
+        time,
+      };
+    } else {
+      // Check-in
+      const recordId = `REC_${matchedTeacher.id}_${date.replace(/-/g, '')}_${Date.now()}`;
+      const newRec: AttendanceRecord = {
+        id: recordId,
+        teacherId: matchedTeacher.id,
+        date,
+        checkIn: time,
+        checkOut: '',
+      };
+      records.push(newRec);
+      await StorageService.saveKey(storageKey, records);
+      return {
+        action: 'checkIn',
+        recordId,
+        teacher: matchedTeacher.name,
+        date,
+        time,
+      };
+    }
   },
 
+  // Add teacher
   async addTeacher(name: string, subject: string, pin: string): Promise<{ id: string }> {
-    return await apiCall({ action: 'addTeacher', name, subject, pin });
+    const id = `T_${Date.now()}`;
+    const newTeacher: AttendanceTeacher = { id, name, subject, pin };
+
+    const teachers = await StorageService.loadKey<AttendanceTeacher[]>('teachers', []);
+    teachers.push(newTeacher);
+    await StorageService.saveKey('teachers', teachers);
+
+    apiCall({ action: 'addTeacher', name, subject, pin }, 6000).catch((e) => console.warn('Sync addTeacher notice:', e));
+    return { id };
   },
 
+  // Remove teacher
   async removeTeacher(id: string): Promise<void> {
-    await apiCall({ action: 'removeTeacher', id });
+    const teachers = await StorageService.loadKey<AttendanceTeacher[]>('teachers', []);
+    const updated = teachers.filter((t) => t.id !== id && t.name !== id);
+    await StorageService.saveKey('teachers', updated);
+
+    apiCall({ action: 'removeTeacher', id }, 6000).catch((e) => console.warn('Sync removeTeacher notice:', e));
   },
 
-  async editRecord(recordId: string, checkIn: string, checkOut: string): Promise<void> {
-    await apiCall({ action: 'editRecord', recordId, checkIn, checkOut });
+  // Edit record
+  async editRecord(recordId: string, checkIn: string, checkOut: string, teacherId?: string, date?: string): Promise<void> {
+    if (date) {
+      const mKey = date.slice(0, 7);
+      const storageKey = `attendance_recs_${mKey}`;
+      const records = await StorageService.loadKey<AttendanceRecord[]>(storageKey, []);
+      const idx = records.findIndex((r) => r.id === recordId || (r.teacherId === teacherId && r.date === date));
+      if (idx >= 0) {
+        records[idx].checkIn = checkIn;
+        records[idx].checkOut = checkOut;
+      } else if (teacherId) {
+        records.push({ id: recordId, teacherId, date, checkIn, checkOut });
+      }
+      await StorageService.saveKey(storageKey, records);
+    }
+
+    const params: Record<string, string> = { action: 'editRecord', recordId, checkIn, checkOut };
+    if (teacherId) params.teacherId = teacherId;
+    if (date) params.date = date;
+
+    apiCall(params, 6000).catch((e) => console.warn('Sync editRecord notice:', e));
   },
 
-  async deleteRecord(recordId: string): Promise<void> {
-    await apiCall({ action: 'deleteRecord', recordId });
+  // Delete record
+  async deleteRecord(recordId: string, date?: string): Promise<void> {
+    if (date) {
+      const mKey = date.slice(0, 7);
+      const storageKey = `attendance_recs_${mKey}`;
+      const records = await StorageService.loadKey<AttendanceRecord[]>(storageKey, []);
+      const updated = records.filter((r) => r.id !== recordId);
+      await StorageService.saveKey(storageKey, updated);
+    }
+
+    apiCall({ action: 'deleteRecord', recordId }, 6000).catch((e) => console.warn('Sync deleteRecord notice:', e));
   }
 };
 
@@ -137,4 +308,5 @@ export function getDistanceInMeters(lat1: number, lon1: number, lat2: number, lo
 
   return R * c;
 }
+
 
