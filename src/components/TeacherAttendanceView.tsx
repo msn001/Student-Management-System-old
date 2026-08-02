@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AttendanceService, AttendanceTeacher, AttendanceRecord, AttendanceSettings, DEFAULT_ATTENDANCE_SETTINGS, getDailyPasscode, getDistanceInMeters } from '../lib/attendanceService';
-import { Clock, Fingerprint, Calendar, ClipboardList, RefreshCw, AlertTriangle, Printer, LogIn, ChevronRight, User, MapPin, Lock, KeyRound, Smartphone, CheckCircle2, AlertCircle, Save, Check, UserCheck, Pencil, X, Trash2, Edit2 } from 'lucide-react';
+import { Clock, Fingerprint, Calendar, ClipboardList, RefreshCw, AlertTriangle, Printer, LogIn, ChevronRight, User, MapPin, Lock, KeyRound, Smartphone, Settings, CheckCircle2, AlertCircle, Save, Check, UserCheck, Pencil, X, Trash2, Edit2 } from 'lucide-react';
 import { formatTimeToAMPM } from '../lib/utils';
 import { StorageService } from '../lib/storage';
 
@@ -19,7 +19,7 @@ interface ScanResult {
 }
 
 export default function TeacherAttendanceView() {
-  const [activeSubTab, setActiveSubTab] = useState<'live' | 'report'>('live');
+  const [activeSubTab, setActiveSubTab] = useState<'live' | 'report' | 'settings'>('live');
   const [teachers, setTeachers] = useState<AttendanceTeacher[]>([]);
   const [todayRecords, setTodayRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -29,6 +29,7 @@ export default function TeacherAttendanceView() {
   const [securitySettings, setSecuritySettings] = useState<AttendanceSettings>(DEFAULT_ATTENDANCE_SETTINGS);
   const [dailyPasscodeInput, setDailyPasscodeInput] = useState('');
   const [isThisKiosk, setIsThisKiosk] = useState(false);
+  const [saveSettingsSuccess, setSaveSettingsSuccess] = useState(false);
 
   // Clock state
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -38,6 +39,40 @@ export default function TeacherAttendanceView() {
   const [pinBusy, setPinBusy] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
 
+  // Helper functions for custom expected arrival times & punctuality
+  const getTeacherExpectedTime = (teacherIdOrName: string): string => {
+    const t = teachers.find(
+      (x) => x.id === teacherIdOrName || x.name.toLowerCase() === teacherIdOrName.toLowerCase()
+    );
+    const idKey = t ? t.id : teacherIdOrName;
+    const nameKey = t ? t.name : teacherIdOrName;
+    const times = securitySettings.teacherArrivalTimes || {};
+    return times[idKey] || times[nameKey] || securitySettings.defaultArrivalTime || '09:00';
+  };
+
+  const checkArrivalPunctuality = (checkInStr: string, expectedTimeStr: string) => {
+    if (!checkInStr) return { isLate: false, lateMins: 0, statusLabel: '—' };
+    const [ciH, ciM] = checkInStr.split(':').map(Number);
+    const ciMins = (ciH || 0) * 60 + (ciM || 0);
+
+    const [expH, expM] = (expectedTimeStr || '09:00').split(':').map(Number);
+    const expMins = (expH || 0) * 60 + (expM || 0);
+
+    const diff = ciMins - expMins;
+    if (diff > 0) {
+      return {
+        isLate: true,
+        lateMins: diff,
+        statusLabel: `Late (${diff}m)`,
+      };
+    }
+    return {
+      isLate: false,
+      lateMins: 0,
+      statusLabel: 'On Time',
+    };
+  };
+
   // Report filters and results state
   const [reportTeacherId, setReportTeacherId] = useState('all');
   const [reportMonth, setReportMonth] = useState(new Date().getMonth());
@@ -46,35 +81,89 @@ export default function TeacherAttendanceView() {
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState('');
 
-  // Silent real-time background sync
-  const syncLiveData = async () => {
+  // Editing individual report row state
+  const [editingRow, setEditingRow] = useState<{
+    teacherId: string;
+    dateStr: string;
+    recordId?: string;
+  } | null>(null);
+
+  const [editCheckIn, setEditCheckIn] = useState('');
+  const [editCheckOut, setEditCheckOut] = useState('');
+  const [rowSaving, setRowSaving] = useState(false);
+
+  const startEditRow = (teacherId: string, dateStr: string, existingRec?: AttendanceRecord, expectedTime?: string) => {
+    setEditingRow({
+      teacherId,
+      dateStr,
+      recordId: existingRec?.id,
+    });
+    setEditCheckIn(existingRec?.checkIn || expectedTime || '09:00');
+    setEditCheckOut(existingRec?.checkOut || '17:00');
+  };
+
+  const cancelEditRow = () => {
+    setEditingRow(null);
+    setEditCheckIn('');
+    setEditCheckOut('');
+  };
+
+  const saveRowEdit = async (forceClear = false) => {
+    if (!editingRow) return;
+    setRowSaving(true);
+    const { teacherId, dateStr, recordId } = editingRow;
+
+    const finalCheckIn = forceClear ? '' : editCheckIn.trim();
+    const finalCheckOut = forceClear ? '' : editCheckOut.trim();
+
     try {
-      const fetchedTeachers = await AttendanceService.getTeachers();
-      if (fetchedTeachers && fetchedTeachers.length > 0) {
-        setTeachers(fetchedTeachers);
+      if (!finalCheckIn && !finalCheckOut) {
+        // Mark as absent: delete or clear record
+        if (recordId) {
+          await AttendanceService.deleteRecord(recordId).catch(() => {});
+          setReportRecords((prev) => prev.filter((r) => r.id !== recordId));
+        }
+      } else {
+        const recId = recordId || `REC_${teacherId}_${dateStr.replace(/-/g, '')}_${Date.now()}`;
+        const newRec: AttendanceRecord = {
+          id: recId,
+          teacherId,
+          date: dateStr,
+          checkIn: finalCheckIn,
+          checkOut: finalCheckOut,
+        };
+
+        // Send to Apps Script service
+        await AttendanceService.editRecord(recId, finalCheckIn, finalCheckOut).catch((err) => {
+          console.warn('Backend editRecord notice:', err);
+        });
+
+        // Update local state immediately
+        setReportRecords((prev) => {
+          const idx = prev.findIndex((r) => r.id === recId || (r.teacherId === teacherId && r.date === dateStr));
+          if (idx >= 0) {
+            const copy = [...prev];
+            copy[idx] = newRec;
+            return copy;
+          }
+          return [...prev, newRec];
+        });
       }
-
-      const nowStr = getLocalDateString();
-      const ydStr = getLocalDateString(new Date(Date.now() - 86400000));
-      
-      const [r1, r2] = await Promise.all([
-        AttendanceService.getRecords(nowStr.slice(0, 7)),
-        AttendanceService.getRecords(ydStr.slice(0, 7))
-      ]);
-
-      const merged = [...r2, ...r1];
-      const seenIds = new Set<string>();
-      const uniques = merged.filter((r) => {
-        if (seenIds.has(r.id)) return false;
-        seenIds.add(r.id);
-        return true;
-      });
-
-      setTodayRecords(uniques);
     } catch (err) {
-      // Silent pass for background sync
+      console.error('Error saving row edit:', err);
+    } finally {
+      setRowSaving(false);
+      setEditingRow(null);
     }
   };
+
+  // 1. Tick Clock
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // 2. Fetch initial data (teachers + today's attendance logs + security settings)
   const loadData = async () => {
@@ -119,11 +208,6 @@ export default function TeacherAttendanceView() {
 
   useEffect(() => {
     loadData();
-    // Real-time polling interval (every 10 seconds)
-    const pollTimer = setInterval(() => {
-      syncLiveData();
-    }, 10000);
-    return () => clearInterval(pollTimer);
   }, []);
 
   // Keyboard support for PIN Pad
@@ -286,15 +370,11 @@ export default function TeacherAttendanceView() {
     try {
       const res = await AttendanceService.scan(pin, dateStr, timeStr);
       
-      // Match teacher by ID or Name or PIN
-      const matchedT = teachers.find(
-        (t) => t.name.toLowerCase() === res.teacher.toLowerCase() ||
-               t.id === res.teacher ||
-               (t.pin && t.pin.trim() === pin.trim())
-      );
-      const teacherId = matchedT ? matchedT.id : res.teacher;
-
       if (res.action === 'checkIn') {
+        const teacherId = findTeacherIdByName(res.teacher, teachers);
+        const expectedTime = getTeacherExpectedTime(teacherId);
+        const punct = checkArrivalPunctuality(res.time, expectedTime);
+
         // Add to active today records list
         const newRecord: AttendanceRecord = {
           id: res.recordId,
@@ -303,26 +383,23 @@ export default function TeacherAttendanceView() {
           checkIn: res.time,
           checkOut: '',
         };
-        setTodayRecords((prev) => {
-          const filtered = prev.filter((r) => r.id !== res.recordId);
-          return [...filtered, newRecord];
-        });
+        setTodayRecords((prev) => [...prev, newRecord]);
+
+        const statusMsg = punct.isLate
+          ? `Checked in • LATE by ${punct.lateMins}m (Target: ${formatTimeToAMPM(expectedTime)})`
+          : `Checked in • ON TIME (Target: ${formatTimeToAMPM(expectedTime)})`;
 
         setScanResult({
           type: 'in',
-          icon: '✅',
+          icon: punct.isLate ? '⚠️' : '✅',
           name: res.teacher,
           time: res.time,
-          status: 'Checked in successfully',
+          status: statusMsg,
         });
       } else {
         // Update check-out in records list
         setTodayRecords((prev) =>
-          prev.map((r) =>
-            r.id === res.recordId || (r.teacherId === teacherId && r.date === res.date && !r.checkOut)
-              ? { ...r, checkOut: res.time }
-              : r
-          )
+          prev.map((r) => (r.id === res.recordId ? { ...r, checkOut: res.time } : r))
         );
         const overnight = res.date !== dateStr;
         setScanResult({
@@ -333,9 +410,6 @@ export default function TeacherAttendanceView() {
           status: 'Checked out' + (overnight ? ' (overnight shift)' : ''),
         });
       }
-
-      // Immediately sync live data to update active tables and report stats
-      syncLiveData();
 
       setPinBuffer('');
       setTimeout(() => {
@@ -422,6 +496,16 @@ export default function TeacherAttendanceView() {
           }`}
         >
           <ClipboardList size={16} /> Read-Only Report
+        </button>
+        <button
+          onClick={() => setActiveSubTab('settings')}
+          className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
+            activeSubTab === 'settings'
+              ? 'border-blue-600 text-blue-600 font-bold bg-blue-50/20'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Settings size={16} /> Arrival Times & Shifts
         </button>
       </div>
 
@@ -609,6 +693,9 @@ export default function TeacherAttendanceView() {
                     .map((rec) => {
                       const teacher = teachers.find((t) => t.id === rec.teacherId || t.name === rec.teacherId);
                       const isComplete = !!rec.checkOut;
+                      const teacherId = teacher ? teacher.id : rec.teacherId;
+                      const expectedTime = getTeacherExpectedTime(teacherId);
+                      const punct = checkArrivalPunctuality(rec.checkIn, expectedTime);
 
                       return (
                         <div
@@ -618,6 +705,15 @@ export default function TeacherAttendanceView() {
                           <div>
                             <div className="font-semibold text-sm text-slate-800 flex items-center gap-2">
                               {teacher ? teacher.name : rec.teacherId}
+                              {punct.isLate ? (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 flex items-center gap-0.5">
+                                  <AlertCircle size={10} /> Late ({punct.lateMins}m)
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-green-100 text-green-700 flex items-center gap-0.5">
+                                  <CheckCircle2 size={10} /> On Time
+                                </span>
+                              )}
                             </div>
                             <div className="font-mono text-[11px] text-slate-500 mt-0.5">
                               {formatTimeToAMPM(rec.checkIn)} {isComplete ? `→ ${formatTimeToAMPM(rec.checkOut)}` : ' (active)'}
@@ -641,7 +737,7 @@ export default function TeacherAttendanceView() {
           </div>
 
         </div>
-      ) : (
+      ) : activeSubTab === 'report' ? (
         // Read-only Report View
         <div className="space-y-6">
           {/* Controls Bar */}
@@ -722,6 +818,7 @@ export default function TeacherAttendanceView() {
                     (r) => r.teacherId === teacher.id || r.teacherId === teacher.name
                   );
 
+                  // Calculate stats including On Time & Late counts
                   const daysInMonth = new Date(reportYear, reportMonth + 1, 0).getDate();
                   const today = new Date();
                   today.setHours(0, 0, 0, 0);
@@ -729,16 +826,28 @@ export default function TeacherAttendanceView() {
                   let totalMins = 0;
                   let presentCount = 0;
                   let absentCount = 0;
+                  let onTimeCount = 0;
+                  let lateCount = 0;
+
+                  const expectedTimeStr = getTeacherExpectedTime(teacher.id);
 
                   for (let d = 1; d <= daysInMonth; d++) {
                     const dateStr = `${reportYear}-${String(reportMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                    const targetDate = new Date(reportYear, reportMonth, d);
+                    const targetDate = new Date(dateStr);
                     const isPast = targetDate <= today;
                     const dayRecs = tRecs.filter((r) => r.date === dateStr);
 
                     if (dayRecs.length > 0) {
                       presentCount++;
                       dayRecs.forEach((r) => {
+                        if (r.checkIn) {
+                          const punct = checkArrivalPunctuality(r.checkIn, expectedTimeStr);
+                          if (punct.isLate) {
+                            lateCount++;
+                          } else {
+                            onTimeCount++;
+                          }
+                        }
                         if (r.checkIn && r.checkOut) {
                           totalMins += calculateMins(r.checkIn, r.checkOut);
                         }
@@ -757,6 +866,9 @@ export default function TeacherAttendanceView() {
                           <h4 className="serif-title font-bold text-base text-slate-800 flex items-center gap-2 mt-0.5">
                             <User size={16} className="text-blue-500" /> {teacher.name}
                             <span className="text-xs font-normal text-slate-500">({teacher.subject || 'No subject'})</span>
+                            <span className="text-xs font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                              Target Arrival: {formatTimeToAMPM(expectedTimeStr)}
+                            </span>
                           </h4>
                         </div>
                         <span className="text-xs font-semibold text-slate-500 bg-white border border-slate-200 px-3 py-1 rounded-lg">
@@ -765,20 +877,30 @@ export default function TeacherAttendanceView() {
                       </div>
 
                       {/* Summary blocks */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 border-b border-slate-100">
+                      <div className="grid grid-cols-2 md:grid-cols-5 border-b border-slate-100">
                         <div className="p-4 border-r border-slate-100 text-center">
-                          <div className="text-2xl font-black font-mono text-green-600">{presentCount}</div>
+                          <div className="text-2xl font-black font-mono text-green-600 flex items-center justify-center gap-1">
+                            <CheckCircle2 size={18} className="text-green-500" />
+                            {onTimeCount}
+                          </div>
+                          <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">On-Time Arrivals</div>
+                        </div>
+                        <div className="p-4 border-r border-slate-100 text-center">
+                          <div className="text-2xl font-black font-mono text-amber-600 flex items-center justify-center gap-1">
+                            <AlertCircle size={18} className="text-amber-500" />
+                            {lateCount}
+                          </div>
+                          <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">Late Arrivals</div>
+                        </div>
+                        <div className="p-4 border-r border-slate-100 text-center">
+                          <div className="text-2xl font-black font-mono text-slate-700">{presentCount}</div>
                           <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">Days Present</div>
                         </div>
                         <div className="p-4 border-r border-slate-100 text-center">
                           <div className="text-2xl font-black font-mono text-red-500">{absentCount}</div>
                           <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">Days Absent</div>
                         </div>
-                        <div className="p-4 border-r border-slate-100 text-center">
-                          <div className="text-2xl font-black font-mono text-slate-700">{presentCount + absentCount}</div>
-                          <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">Total Days</div>
-                        </div>
-                        <div className="p-4 text-center border-t md:border-t-0 border-slate-100">
+                        <div className="p-4 text-center col-span-2 md:col-span-1 border-t md:border-t-0 border-slate-100">
                           <div className="text-2xl font-black font-mono text-blue-600">{formatMins(totalMins)}</div>
                           <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">Hours Worked</div>
                         </div>
@@ -791,38 +913,132 @@ export default function TeacherAttendanceView() {
                             <tr className="bg-slate-50/50 border-b border-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                               <th className="p-3 pl-5">Date</th>
                               <th className="p-3">Weekday</th>
+                              <th className="p-3">Target Arrival</th>
                               <th className="p-3">Check-In</th>
                               <th className="p-3">Check-Out</th>
                               <th className="p-3">Total Hours</th>
-                              <th className="p-3 pr-5 text-right">Status</th>
+                              <th className="p-3">Arrival Status</th>
+                              <th className="p-3 pr-5 text-right no-print">Action</th>
                             </tr>
                           </thead>
                           <tbody>
                             {Array.from({ length: daysInMonth }).map((_, dIdx) => {
                               const dNum = dIdx + 1;
                               const dateStr = `${reportYear}-${String(reportMonth + 1).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
-                              const dateObj = new Date(reportYear, reportMonth, dNum);
+                              const dateObj = new Date(dateStr);
                               const dayName = dateObj.toLocaleDateString(undefined, { weekday: 'short' });
                               const dayRecs = tRecs.filter((r) => r.date === dateStr);
                               const isPast = dateObj <= today;
+                              const isEditing = editingRow?.teacherId === teacher.id && editingRow?.dateStr === dateStr;
+
+                              if (isEditing) {
+                                return (
+                                  <tr key={dateStr} className="border-b border-blue-200 bg-blue-50/40">
+                                    <td className="p-3 pl-5 font-mono text-slate-700 font-semibold">{String(dNum).padStart(2, '0')}</td>
+                                    <td className="p-3 text-slate-500">{dayName}</td>
+                                    <td className="p-3 text-slate-500 font-mono text-[11px]">{formatTimeToAMPM(expectedTimeStr)}</td>
+                                    <td className="p-2">
+                                      <input
+                                        type="time"
+                                        value={editCheckIn}
+                                        onChange={(e) => setEditCheckIn(e.target.value)}
+                                        className="px-2 py-1 border border-blue-300 rounded font-mono text-xs font-bold bg-white text-slate-800 focus:outline-none focus:border-blue-600 shadow-2xs"
+                                      />
+                                    </td>
+                                    <td className="p-2">
+                                      <input
+                                        type="time"
+                                        value={editCheckOut}
+                                        onChange={(e) => setEditCheckOut(e.target.value)}
+                                        className="px-2 py-1 border border-blue-300 rounded font-mono text-xs font-bold bg-white text-slate-800 focus:outline-none focus:border-blue-600 shadow-2xs"
+                                      />
+                                    </td>
+                                    <td className="p-3 font-mono text-slate-700 font-bold text-xs">
+                                      {editCheckIn && editCheckOut ? formatMins(calculateMins(editCheckIn, editCheckOut)) : '—'}
+                                    </td>
+                                    <td className="p-3">
+                                      {editCheckIn ? (
+                                        (() => {
+                                          const p = checkArrivalPunctuality(editCheckIn, expectedTimeStr);
+                                          return p.isLate ? (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800">
+                                              <AlertCircle size={10} /> Late ({p.lateMins}m)
+                                            </span>
+                                          ) : (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700">
+                                              <CheckCircle2 size={10} /> On Time
+                                            </span>
+                                          );
+                                        })()
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-600">
+                                          Absent
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="p-2 pr-5 text-right no-print">
+                                      <div className="flex items-center justify-end gap-1.5">
+                                        <button
+                                          onClick={() => saveRowEdit(false)}
+                                          disabled={rowSaving}
+                                          className="px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                          title="Save attendance record"
+                                        >
+                                          <Check size={13} /> Save
+                                        </button>
+                                        <button
+                                          onClick={() => saveRowEdit(true)}
+                                          disabled={rowSaving}
+                                          className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded text-xs font-semibold cursor-pointer transition-colors"
+                                          title="Mark as absent (clear record)"
+                                        >
+                                          Absent
+                                        </button>
+                                        <button
+                                          onClick={cancelEditRow}
+                                          disabled={rowSaving}
+                                          className="p-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded cursor-pointer transition-colors"
+                                          title="Cancel"
+                                        >
+                                          <X size={14} />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              }
 
                               if (dayRecs.length > 0) {
                                 return dayRecs.map((r, subIdx) => {
                                   const hoursVal = r.checkIn && r.checkOut ? formatMins(calculateMins(r.checkIn, r.checkOut)) : '—';
-                                  const isComplete = !!r.checkOut;
+                                  const punct = checkArrivalPunctuality(r.checkIn, expectedTimeStr);
                                   return (
                                     <tr key={`${r.id}-${subIdx}`} className="border-b border-slate-100 hover:bg-slate-50/50">
                                       <td className="p-3 pl-5 font-mono text-slate-700 font-semibold">{String(dNum).padStart(2, '0')}</td>
                                       <td className="p-3 text-slate-500">{dayName}</td>
+                                      <td className="p-3 text-slate-500 font-mono text-[11px]">{formatTimeToAMPM(expectedTimeStr)}</td>
                                       <td className="p-3 text-slate-800 font-medium">{r.checkIn ? formatTimeToAMPM(r.checkIn) : '—'}</td>
                                       <td className="p-3 text-slate-800 font-medium">{r.checkOut ? formatTimeToAMPM(r.checkOut) : '—'}</td>
                                       <td className="p-3 font-mono text-slate-600 font-medium">{hoursVal}</td>
-                                      <td className="p-3 pr-5 text-right">
-                                        <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                          isComplete ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                                        }`}>
-                                          {isComplete ? 'Done' : 'Active'}
-                                        </span>
+                                      <td className="p-3">
+                                        {punct.isLate ? (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800" title={`Target: ${formatTimeToAMPM(expectedTimeStr)}, Arrived: ${formatTimeToAMPM(r.checkIn)}`}>
+                                            <AlertCircle size={10} /> Late ({punct.lateMins}m)
+                                          </span>
+                                        ) : (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700">
+                                            <CheckCircle2 size={10} /> On Time
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="p-3 pr-5 text-right no-print">
+                                        <button
+                                          onClick={() => startEditRow(teacher.id, dateStr, r, expectedTimeStr)}
+                                          className="px-2 py-1 text-[11px] font-medium text-slate-600 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 hover:border-blue-200 rounded transition-all cursor-pointer inline-flex items-center gap-1"
+                                          title="Edit check-in/out times"
+                                        >
+                                          <Pencil size={12} /> Edit
+                                        </button>
                                       </td>
                                     </tr>
                                   );
@@ -832,10 +1048,11 @@ export default function TeacherAttendanceView() {
                                   <tr key={dateStr} className={`border-b border-slate-100 hover:bg-slate-50/80 ${isPast ? 'opacity-70' : 'opacity-40'}`}>
                                     <td className="p-3 pl-5 font-mono text-slate-500">{String(dNum).padStart(2, '0')}</td>
                                     <td className="p-3 text-slate-400">{dayName}</td>
+                                    <td className="p-3 text-slate-400 font-mono text-[11px]">{formatTimeToAMPM(expectedTimeStr)}</td>
                                     <td colSpan={3} className="p-3 text-slate-400 italic">
                                       {isPast ? 'Absent' : '—'}
                                     </td>
-                                    <td className="p-3 pr-5 text-right">
+                                    <td className="p-3">
                                       {isPast ? (
                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-600">
                                           Absent
@@ -843,6 +1060,15 @@ export default function TeacherAttendanceView() {
                                       ) : (
                                         <span className="text-slate-300 text-[11px]">—</span>
                                       )}
+                                    </td>
+                                    <td className="p-3 pr-5 text-right no-print">
+                                      <button
+                                        onClick={() => startEditRow(teacher.id, dateStr, undefined, expectedTimeStr)}
+                                        className="px-2 py-1 text-[11px] font-medium text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 hover:border-blue-200 rounded transition-all cursor-pointer inline-flex items-center gap-1"
+                                        title="Log or edit attendance for this day"
+                                      >
+                                        <Pencil size={12} /> Edit
+                                      </button>
                                     </td>
                                   </tr>
                                 );
@@ -856,6 +1082,175 @@ export default function TeacherAttendanceView() {
                 })}
             </div>
           )}
+        </div>
+      ) : (
+        /* Settings Sub-Tab: Custom Arrival Times per Teacher */
+        <div className="space-y-6 max-w-4xl">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+              <div>
+                <h3 className="serif-title font-bold text-lg text-slate-800 flex items-center gap-2">
+                  <Clock className="text-blue-600" size={20} /> Teacher Expected Arrival Times
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Configure custom shift start times for each teacher. Check-ins after their target time will be counted as late arrivals.
+                </p>
+              </div>
+
+              <button
+                onClick={async () => {
+                  await StorageService.saveKey('attendanceSettings', securitySettings);
+                  setSaveSettingsSuccess(true);
+                  setTimeout(() => setSaveSettingsSuccess(false), 3000);
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl flex items-center gap-2 shadow-xs cursor-pointer transition-colors shrink-0"
+              >
+                {saveSettingsSuccess ? <Check size={14} /> : <Save size={14} />}
+                {saveSettingsSuccess ? 'Saved!' : 'Save Arrival Times'}
+              </button>
+            </div>
+
+            {saveSettingsSuccess && (
+              <div className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-xs font-semibold flex items-center gap-2">
+                <CheckCircle2 size={16} /> Arrival time settings updated and saved successfully!
+              </div>
+            )}
+
+            {/* Default arrival time */}
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">Default Target Arrival Time</label>
+                <span className="text-[11px] text-slate-500">Fallback arrival time for all teachers unless a custom time is set below.</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="time"
+                  className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-800 bg-white focus:outline-none focus:border-blue-500"
+                  value={securitySettings.defaultArrivalTime || '09:00'}
+                  onChange={(e) => {
+                    setSecuritySettings((prev) => ({
+                      ...prev,
+                      defaultArrivalTime: e.target.value,
+                    }));
+                  }}
+                />
+                <span className="text-xs font-semibold text-slate-500">({formatTimeToAMPM(securitySettings.defaultArrivalTime || '09:00')})</span>
+              </div>
+            </div>
+
+            {/* Teacher Specific list */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Per-Teacher Custom Arrival Times</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {teachers.map((t) => {
+                  const currentCustom = securitySettings.teacherArrivalTimes?.[t.id] || securitySettings.teacherArrivalTimes?.[t.name] || securitySettings.defaultArrivalTime || '09:00';
+                  return (
+                    <div key={t.id} className="p-4 bg-white border border-slate-200 rounded-xl flex flex-col gap-3 shadow-2xs hover:border-slate-300 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 font-bold text-xs flex items-center justify-center border border-blue-100">
+                            {t.name.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-sm text-slate-800">{t.name}</div>
+                            <div className="text-[10px] text-slate-400">{t.subject || 'General'}</div>
+                          </div>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-100">
+                          Target: {formatTimeToAMPM(currentCustom)}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="time"
+                          className="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-mono font-bold text-slate-800 bg-white focus:outline-none focus:border-blue-500"
+                          value={currentCustom}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setSecuritySettings((prev) => ({
+                              ...prev,
+                              teacherArrivalTimes: {
+                                ...(prev.teacherArrivalTimes || {}),
+                                [t.id]: val,
+                                [t.name]: val,
+                              },
+                            }));
+                          }}
+                        />
+
+                        {/* Presets */}
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSecuritySettings((prev) => ({
+                                ...prev,
+                                teacherArrivalTimes: {
+                                  ...(prev.teacherArrivalTimes || {}),
+                                  [t.id]: '09:00',
+                                  [t.name]: '09:00',
+                                },
+                              }));
+                            }}
+                            className="px-2 py-1 text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 rounded text-slate-700 cursor-pointer"
+                          >
+                            9 AM
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSecuritySettings((prev) => ({
+                                ...prev,
+                                teacherArrivalTimes: {
+                                  ...(prev.teacherArrivalTimes || {}),
+                                  [t.id]: '14:00',
+                                  [t.name]: '14:00',
+                                },
+                              }));
+                            }}
+                            className="px-2 py-1 text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 rounded text-slate-700 cursor-pointer"
+                          >
+                            2 PM
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSecuritySettings((prev) => ({
+                                ...prev,
+                                teacherArrivalTimes: {
+                                  ...(prev.teacherArrivalTimes || {}),
+                                  [t.id]: '17:00',
+                                  [t.name]: '17:00',
+                                },
+                              }));
+                            }}
+                            className="px-2 py-1 text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 rounded text-slate-700 cursor-pointer"
+                          >
+                            5 PM
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-slate-100 flex justify-end">
+              <button
+                onClick={async () => {
+                  await StorageService.saveKey('attendanceSettings', securitySettings);
+                  setSaveSettingsSuccess(true);
+                  setTimeout(() => setSaveSettingsSuccess(false), 3000);
+                }}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl flex items-center gap-2 shadow-xs cursor-pointer transition-colors"
+              >
+                {saveSettingsSuccess ? <Check size={14} /> : <Save size={14} />}
+                {saveSettingsSuccess ? 'Settings Saved' : 'Save Arrival Times'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AttendanceService, AttendanceTeacher, AttendanceRecord, AttendanceSettings, DEFAULT_ATTENDANCE_SETTINGS, getDailyPasscode } from '../lib/attendanceService';
-import { UserCheck, Plus, Trash2, Edit2, X, Check, AlertTriangle, Printer, User, QrCode, ClipboardList, ShieldAlert, MapPin, Lock, Smartphone, Laptop, KeyRound, Activity, HardDrive, Pencil, Eye, EyeOff, Clock, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { UserCheck, Plus, Trash2, Edit2, X, Check, AlertTriangle, Printer, User, QrCode, ClipboardList, ShieldAlert, MapPin, Lock, Smartphone, Laptop, KeyRound, Activity, HardDrive } from 'lucide-react';
 import { formatTimeToAMPM } from '../lib/utils';
 import { StorageService } from '../lib/storage';
 import PruneDataModal from './PruneDataModal';
@@ -32,105 +32,12 @@ export default function ManageAttendanceView() {
   const [newName, setNewName] = useState('');
   const [newSubject, setNewSubject] = useState('');
   const [newPin, setNewPin] = useState('');
-  const [newArrivalTime, setNewArrivalTime] = useState('09:00');
   const [addLoading, setAddLoading] = useState(false);
   const [addSuccess, setAddSuccess] = useState('');
   const [addError, setAddError] = useState('');
 
   // Local storage/memory cache for PINs of newly created teachers in this session (as the server doesn't return PINs back for safety)
   const [sessionPins, setSessionPins] = useState<Record<string, string>>({});
-
-  // Teacher PIN editing state
-  const [editingTeacherId, setEditingTeacherId] = useState<string | null>(null);
-  const [editingPinInput, setEditingPinInput] = useState('');
-  const [pinSaving, setPinSaving] = useState(false);
-  const [pinMasked, setPinMasked] = useState(false);
-
-  // Teacher Target Arrival Time editing state
-  const [editingArrivalTimeTeacherId, setEditingArrivalTimeTeacherId] = useState<string | null>(null);
-  const [editingArrivalTimeInput, setEditingArrivalTimeInput] = useState('09:00');
-
-  // Helper functions for custom expected arrival times & punctuality
-  const getTeacherExpectedTime = (teacherIdOrName: string): string => {
-    const t = teachers.find(
-      (x) => x.id === teacherIdOrName || x.name.toLowerCase() === teacherIdOrName.toLowerCase()
-    );
-    const idKey = t ? t.id : teacherIdOrName;
-    const nameKey = t ? t.name : teacherIdOrName;
-    const times = securitySettings.teacherArrivalTimes || {};
-    return times[idKey] || times[nameKey] || securitySettings.defaultArrivalTime || '09:00';
-  };
-
-  const checkArrivalPunctuality = (checkInStr: string, expectedTimeStr: string) => {
-    if (!checkInStr) return { isLate: false, lateMins: 0, statusLabel: '—' };
-    const [ciH, ciM] = checkInStr.split(':').map(Number);
-    const ciMins = (ciH || 0) * 60 + (ciM || 0);
-
-    const [expH, expM] = (expectedTimeStr || '09:00').split(':').map(Number);
-    const expMins = (expH || 0) * 60 + (expM || 0);
-
-    const diff = ciMins - expMins;
-    if (diff > 0) {
-      return {
-        isLate: true,
-        lateMins: diff,
-        statusLabel: `Late (${diff}m)`,
-      };
-    }
-    return {
-      isLate: false,
-      lateMins: 0,
-      statusLabel: 'On Time',
-    };
-  };
-
-  const startEditPin = (t: AttendanceTeacher) => {
-    setEditingTeacherId(t.id);
-    setEditingPinInput(t.pin || sessionPins[t.id] || '1001');
-  };
-
-  const cancelEditPin = () => {
-    setEditingTeacherId(null);
-    setEditingPinInput('');
-  };
-
-  const handleSavePin = async (id: string) => {
-    const trimmed = editingPinInput.trim();
-    if (!/^\d{4}$/.test(trimmed)) {
-      alert('PIN must be exactly 4 digits (e.g., 1234)');
-      return;
-    }
-    setPinSaving(true);
-    try {
-      await AttendanceService.updateTeacherPin(id, trimmed);
-      setTeachers((prev) => prev.map((t) => (t.id === id ? { ...t, pin: trimmed } : t)));
-      setSessionPins((prev) => ({ ...prev, [id]: trimmed }));
-      setEditingTeacherId(null);
-    } catch (err: any) {
-      alert(`Failed to save PIN: ${err.message || err}`);
-    } finally {
-      setPinSaving(false);
-    }
-  };
-
-  const startEditArrivalTime = (t: AttendanceTeacher) => {
-    setEditingArrivalTimeTeacherId(t.id);
-    setEditingArrivalTimeInput(getTeacherExpectedTime(t.id));
-  };
-
-  const cancelEditArrivalTime = () => {
-    setEditingArrivalTimeTeacherId(null);
-    setEditingArrivalTimeInput('09:00');
-  };
-
-  const handleSaveArrivalTime = async (id: string) => {
-    const timeVal = editingArrivalTimeInput.trim() || '09:00';
-    const updatedTimes = { ...(securitySettings.teacherArrivalTimes || {}), [id]: timeVal };
-    const updated = { ...securitySettings, teacherArrivalTimes: updatedTimes };
-    setSecuritySettings(updated);
-    await handleSaveSettings(updated);
-    setEditingArrivalTimeTeacherId(null);
-  };
 
   // QR Code base URL state
   const [baseUrl, setBaseUrl] = useState(() => {
@@ -285,19 +192,10 @@ export default function ManageAttendanceView() {
 
       setTeachers((prev) => [...prev, newTeacher]);
       
-      // Save custom target arrival time for new teacher
-      if (newArrivalTime) {
-        const updatedTimes = { ...(securitySettings.teacherArrivalTimes || {}), [res.id]: newArrivalTime };
-        const updatedSettings = { ...securitySettings, teacherArrivalTimes: updatedTimes };
-        setSecuritySettings(updatedSettings);
-        handleSaveSettings(updatedSettings);
-      }
-
       // Reset inputs
       setNewName('');
       setNewSubject('');
       setNewPin('');
-      setNewArrivalTime('09:00');
       setAddSuccess(`${trimmedName} added successfully! Remember PIN: ${trimmedPin}`);
     } catch (err: any) {
       setAddError(err.message || 'Failed to add teacher.');
@@ -339,19 +237,14 @@ export default function ManageAttendanceView() {
     setEditLoading(true);
     setEditError('');
     try {
-      await AttendanceService.editRecord(editingRecord.id, editCheckIn, editCheckOut, editingRecord.teacherId, editingRecord.date);
+      await AttendanceService.editRecord(editingRecord.id, editCheckIn, editCheckOut);
       
       // Update local report list state
-      setReportRecords((prev) => {
-        const idx = prev.findIndex((r) => r.id === editingRecord.id || (r.teacherId === editingRecord.teacherId && r.date === editingRecord.date));
-        const updated = { ...editingRecord, checkIn: editCheckIn, checkOut: editCheckOut };
-        if (idx >= 0) {
-          const copy = [...prev];
-          copy[idx] = updated;
-          return copy;
-        }
-        return [...prev, updated];
-      });
+      setReportRecords((prev) =>
+        prev.map((r) =>
+          r.id === editingRecord.id ? { ...r, checkIn: editCheckIn, checkOut: editCheckOut } : r
+        )
+      );
 
       setEditingRecord(null);
       alert('Attendance record updated successfully.');
@@ -371,10 +264,10 @@ export default function ManageAttendanceView() {
     setEditLoading(true);
     setEditError('');
     try {
-      await AttendanceService.deleteRecord(editingRecord.id, editingRecord.date);
+      await AttendanceService.deleteRecord(editingRecord.id);
       
       // Remove from local list state
-      setReportRecords((prev) => prev.filter((r) => r.id !== editingRecord.id && !(r.teacherId === editingRecord.teacherId && r.date === editingRecord.date)));
+      setReportRecords((prev) => prev.filter((r) => r.id !== editingRecord.id));
       setEditingRecord(null);
       alert('Attendance record deleted successfully.');
     } catch (err: any) {
@@ -462,27 +355,16 @@ export default function ManageAttendanceView() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">4-Digit PIN</label>
-                      <input
-                        type="text"
-                        maxLength={4}
-                        placeholder="e.g. 1234"
-                        className="w-full px-3 py-2 border border-slate-300 rounded focus:border-blue-500 bg-white focus:outline-none text-xs font-mono font-bold tracking-widest text-center"
-                        value={newPin}
-                        onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1">Target Arrival</label>
-                      <input
-                        type="time"
-                        className="w-full px-3 py-2 border border-slate-300 rounded focus:border-blue-500 bg-white focus:outline-none text-xs font-mono font-bold text-center text-slate-800"
-                        value={newArrivalTime}
-                        onChange={(e) => setNewArrivalTime(e.target.value)}
-                      />
-                    </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">4-Digit PIN</label>
+                    <input
+                      type="text"
+                      maxLength={4}
+                      placeholder="e.g. 1234"
+                      className="w-full px-3 py-2 border border-slate-300 rounded focus:border-blue-500 bg-white focus:outline-none text-xs font-mono font-bold tracking-widest text-center"
+                      value={newPin}
+                      onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+                    />
                   </div>
 
                   {addError && (
@@ -700,29 +582,6 @@ export default function ManageAttendanceView() {
                 </div>
               </div>
 
-              {/* Timing Option: Default Target Arrival Time */}
-              <div className="pt-3 border-t border-slate-100 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Clock size={15} className="text-blue-500" />
-                    <span className="text-xs font-bold text-slate-700">Default Target Arrival</span>
-                  </div>
-                  <input
-                    type="time"
-                    value={securitySettings.defaultArrivalTime || '09:00'}
-                    onChange={(e) => {
-                      const updated = { ...securitySettings, defaultArrivalTime: e.target.value };
-                      setSecuritySettings(updated);
-                      handleSaveSettings(updated);
-                    }}
-                    className="px-2 py-1 border border-slate-300 rounded font-mono text-xs font-bold text-slate-800 bg-white"
-                  />
-                </div>
-                <p className="text-[10px] text-slate-400 leading-relaxed">
-                  Default morning target arrival time for punctuality tracking. Custom times can be assigned per teacher in the Directory table.
-                </p>
-              </div>
-
               {saveSuccess && (
                 <div className="p-2 bg-emerald-50 text-emerald-700 text-[10px] font-semibold rounded-lg border border-emerald-100 text-center animate-fade-in">
                   {saveSuccess}
@@ -762,19 +621,7 @@ export default function ManageAttendanceView() {
                       <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                         <th className="p-3">Name</th>
                         <th className="p-3">Subject</th>
-                        <th className="p-3 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <span>PIN</span>
-                            <button
-                              onClick={() => setPinMasked(!pinMasked)}
-                              className="p-0.5 text-slate-400 hover:text-slate-600 transition-colors"
-                              title={pinMasked ? 'Show PINs' : 'Hide PINs'}
-                            >
-                              {pinMasked ? <EyeOff size={11} /> : <Eye size={11} />}
-                            </button>
-                          </div>
-                        </th>
-                        <th className="p-3 text-center">Target Arrival</th>
+                        <th className="p-3 text-center">PIN</th>
                         <th className="p-3 text-right">Actions</th>
                       </tr>
                     </thead>
@@ -783,93 +630,13 @@ export default function ManageAttendanceView() {
                         <tr key={t.id} className="border-b border-slate-100 hover:bg-slate-50/30">
                           <td className="p-3 font-semibold text-slate-800">{t.name}</td>
                           <td className="p-3 text-slate-500">{t.subject || '—'}</td>
-                          <td className="p-3 text-center">
-                            {editingTeacherId === t.id ? (
-                              <div className="flex items-center justify-center gap-1">
-                                <input
-                                  type="text"
-                                  maxLength={4}
-                                  value={editingPinInput}
-                                  onChange={(e) => setEditingPinInput(e.target.value)}
-                                  className="w-16 px-1.5 py-0.5 border border-blue-400 rounded font-mono text-center text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-                                  autoFocus
-                                />
-                                <button
-                                  onClick={() => handleSavePin(t.id)}
-                                  disabled={pinSaving}
-                                  className="p-1 bg-green-600 hover:bg-green-700 text-white rounded cursor-pointer transition-colors shadow-2xs"
-                                  title="Save PIN"
-                                >
-                                  <Check size={12} />
-                                </button>
-                                <button
-                                  onClick={cancelEditPin}
-                                  disabled={pinSaving}
-                                  className="p-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded cursor-pointer transition-colors"
-                                  title="Cancel"
-                                >
-                                  <X size={12} />
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-center gap-1.5">
-                                <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-0.5 rounded text-xs tracking-widest shadow-3xs">
-                                  {pinMasked ? '••••' : (sessionPins[t.id] || t.pin || '1001')}
-                                </span>
-                                <button
-                                  onClick={() => startEditPin(t)}
-                                  className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-200 rounded transition-all cursor-pointer"
-                                  title="Edit PIN code"
-                                >
-                                  <Pencil size={12} />
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                          <td className="p-3 text-center">
-                            {editingArrivalTimeTeacherId === t.id ? (
-                              <div className="flex items-center justify-center gap-1">
-                                <input
-                                  type="time"
-                                  value={editingArrivalTimeInput}
-                                  onChange={(e) => setEditingArrivalTimeInput(e.target.value)}
-                                  className="px-1.5 py-0.5 border border-blue-400 rounded font-mono text-center text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-                                  autoFocus
-                                />
-                                <button
-                                  onClick={() => handleSaveArrivalTime(t.id)}
-                                  className="p-1 bg-green-600 hover:bg-green-700 text-white rounded cursor-pointer transition-colors shadow-2xs"
-                                  title="Save Arrival Time"
-                                >
-                                  <Check size={12} />
-                                </button>
-                                <button
-                                  onClick={cancelEditArrivalTime}
-                                  className="p-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded cursor-pointer transition-colors"
-                                  title="Cancel"
-                                >
-                                  <X size={12} />
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-center gap-1.5">
-                                <span className="font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded text-xs shadow-3xs">
-                                  {formatTimeToAMPM(getTeacherExpectedTime(t.id))}
-                                </span>
-                                <button
-                                  onClick={() => startEditArrivalTime(t)}
-                                  className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-200 rounded transition-all cursor-pointer"
-                                  title="Edit target arrival time"
-                                >
-                                  <Pencil size={12} />
-                                </button>
-                              </div>
-                            )}
+                          <td className="p-3 text-center font-mono font-bold text-slate-600 tracking-widest">
+                            {sessionPins[t.id] || t.pin || '••••'}
                           </td>
                           <td className="p-3 text-right">
                             <button
                               onClick={() => handleRemoveTeacher(t.id, t.name)}
-                              className="p-1 px-2.5 bg-red-50 text-[10px] font-bold text-red-600 rounded-lg hover:bg-red-100 border border-red-100 transition-colors cursor-pointer inline-flex items-center gap-0.5"
+                              className="p-1 px-2.5 bg-red-50 text-[10px] font-bold text-red-600 rounded-lg hover:bg-red-100 transition-colors cursor-pointer inline-flex items-center gap-0.5"
                             >
                               <Trash2 size={10} /> Remove
                             </button>
@@ -878,9 +645,8 @@ export default function ManageAttendanceView() {
                       ))}
                     </tbody>
                   </table>
-                  <p className="text-[10px] text-slate-500 leading-normal p-3 bg-blue-50/50 rounded-xl border border-blue-100 mt-4 flex items-center gap-1.5 font-medium">
-                    <KeyRound size={12} className="text-blue-600 shrink-0" />
-                    <span>Admin Lock Tab: PINs and Target Arrival Times are fully visible and editable. Click the pencil icon to modify PINs or target arrival times.</span>
+                  <p className="text-[10px] text-slate-400 leading-normal p-3 bg-slate-50 rounded-xl border border-slate-100 mt-4 italic">
+                    Note: To maximize system security, PINs are only shown right after adding a teacher. Once you leave this page or refresh, they will be masked.
                   </p>
                 </div>
               )}
@@ -1022,12 +788,10 @@ export default function ManageAttendanceView() {
                   let totalMins = 0;
                   let presentCount = 0;
                   let absentCount = 0;
-                  let lateCount = 0;
-                  const expectedTimeStr = getTeacherExpectedTime(teacher.id);
 
                   for (let d = 1; d <= daysInMonth; d++) {
                     const dateStr = `${reportYear}-${String(reportMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                    const targetDate = new Date(reportYear, reportMonth, d);
+                    const targetDate = new Date(dateStr);
                     const isPast = targetDate <= today;
                     const dayRecs = tRecs.filter((r) => r.date === dateStr);
 
@@ -1036,10 +800,6 @@ export default function ManageAttendanceView() {
                       dayRecs.forEach((r) => {
                         if (r.checkIn && r.checkOut) {
                           totalMins += calculateMins(r.checkIn, r.checkOut);
-                        }
-                        if (r.checkIn) {
-                          const punct = checkArrivalPunctuality(r.checkIn, expectedTimeStr);
-                          if (punct.isLate) lateCount++;
                         }
                       });
                     } else if (isPast) {
@@ -1064,17 +824,10 @@ export default function ManageAttendanceView() {
                       </div>
 
                       {/* Summary blocks */}
-                      <div className="grid grid-cols-2 md:grid-cols-5 border-b border-slate-100">
+                      <div className="grid grid-cols-2 md:grid-cols-4 border-b border-slate-100">
                         <div className="p-4 border-r border-slate-100 text-center">
                           <div className="text-2xl font-black font-mono text-green-600">{presentCount}</div>
                           <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">Days Present</div>
-                        </div>
-                        <div className="p-4 border-r border-slate-100 text-center">
-                          <div className="text-2xl font-black font-mono text-amber-600 flex items-center justify-center gap-1">
-                            <AlertCircle size={18} className="text-amber-500" />
-                            {lateCount}
-                          </div>
-                          <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">Late Arrivals</div>
                         </div>
                         <div className="p-4 border-r border-slate-100 text-center">
                           <div className="text-2xl font-black font-mono text-red-500">{absentCount}</div>
@@ -1084,7 +837,7 @@ export default function ManageAttendanceView() {
                           <div className="text-2xl font-black font-mono text-slate-700">{presentCount + absentCount}</div>
                           <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">Total Days</div>
                         </div>
-                        <div className="p-4 text-center col-span-2 md:col-span-1 border-t md:border-t-0 border-slate-100">
+                        <div className="p-4 text-center">
                           <div className="text-2xl font-black font-mono text-blue-600">{formatMins(totalMins)}</div>
                           <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">Hours Worked</div>
                         </div>
@@ -1097,19 +850,17 @@ export default function ManageAttendanceView() {
                             <tr className="bg-slate-50/50 border-b border-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                               <th className="p-3 pl-5">Date</th>
                               <th className="p-3">Weekday</th>
-                              <th className="p-3">Target Arrival</th>
                               <th className="p-3">Check-In</th>
                               <th className="p-3">Check-Out</th>
                               <th className="p-3">Total Hours</th>
-                              <th className="p-3">Arrival Status</th>
-                              <th className="p-3 pr-5 text-right">Actions</th>
+                              <th className="p-3 pr-5 text-right">Status / Edit</th>
                             </tr>
                           </thead>
                           <tbody>
                             {Array.from({ length: daysInMonth }).map((_, dIdx) => {
                               const dNum = dIdx + 1;
                               const dateStr = `${reportYear}-${String(reportMonth + 1).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
-                              const dateObj = new Date(reportYear, reportMonth, dNum);
+                              const dateObj = new Date(dateStr);
                               const dayName = dateObj.toLocaleDateString(undefined, { weekday: 'short' });
                               const dayRecs = tRecs.filter((r) => r.date === dateStr);
                               const isPast = dateObj <= today;
@@ -1117,33 +868,20 @@ export default function ManageAttendanceView() {
                               if (dayRecs.length > 0) {
                                 return dayRecs.map((r, subIdx) => {
                                   const hoursVal = r.checkIn && r.checkOut ? formatMins(calculateMins(r.checkIn, r.checkOut)) : '—';
-                                  const punct = checkArrivalPunctuality(r.checkIn, expectedTimeStr);
+                                  const isComplete = !!r.checkOut;
                                   return (
                                     <tr key={`${r.id}-${subIdx}`} className="border-b border-slate-100 hover:bg-slate-50/50">
                                       <td className="p-3 pl-5 font-mono text-slate-700 font-semibold">{String(dNum).padStart(2, '0')}</td>
                                       <td className="p-3 text-slate-500">{dayName}</td>
-                                      <td className="p-3 text-slate-600 font-mono text-xs">{formatTimeToAMPM(expectedTimeStr)}</td>
                                       <td className="p-3 text-slate-800 font-medium">{r.checkIn ? formatTimeToAMPM(r.checkIn) : '—'}</td>
                                       <td className="p-3 text-slate-800 font-medium">{r.checkOut ? formatTimeToAMPM(r.checkOut) : '—'}</td>
                                       <td className="p-3 font-mono text-slate-600 font-medium">{hoursVal}</td>
-                                      <td className="p-3">
-                                        {r.checkIn ? (
-                                          punct.isLate ? (
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800">
-                                              <AlertCircle size={10} /> Late ({punct.lateMins}m)
-                                            </span>
-                                          ) : (
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700">
-                                              <CheckCircle2 size={10} /> On Time
-                                            </span>
-                                          )
-                                        ) : (
-                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-600">
-                                            Absent
-                                          </span>
-                                        )}
-                                      </td>
                                       <td className="p-3 pr-5 text-right flex items-center justify-end gap-2 h-11">
+                                        <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                          isComplete ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                                        }`}>
+                                          {isComplete ? 'Complete' : 'Open'}
+                                        </span>
                                         <button
                                           onClick={() => handleOpenEdit(r)}
                                           className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-100 cursor-pointer transition-colors"
@@ -1157,38 +895,18 @@ export default function ManageAttendanceView() {
                                 });
                               } else {
                                 return (
-                                  <tr key={dateStr} className={`border-b border-slate-100 ${isPast ? 'opacity-70' : 'opacity-40'}`}>
+                                  <tr key={dateStr} className={`border-b border-slate-100 ${isPast ? 'opacity-40' : 'opacity-20'}`}>
                                     <td className="p-3 pl-5 font-mono text-slate-500">{String(dNum).padStart(2, '0')}</td>
                                     <td className="p-3 text-slate-400">{dayName}</td>
-                                    <td className="p-3 text-slate-400 font-mono text-xs">{formatTimeToAMPM(expectedTimeStr)}</td>
                                     <td colSpan={3} className="p-3 text-slate-400 italic">
                                       {isPast ? 'Absent' : '—'}
                                     </td>
-                                    <td className="p-3">
-                                      {isPast ? (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-600">
+                                    <td className="p-3 pr-5 text-right">
+                                      {isPast && (
+                                        <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-600">
                                           Absent
                                         </span>
-                                      ) : (
-                                        <span className="text-slate-300 text-xs">—</span>
                                       )}
-                                    </td>
-                                    <td className="p-3 pr-5 text-right flex items-center justify-end gap-2 h-11">
-                                      <button
-                                        onClick={() =>
-                                          handleOpenEdit({
-                                            id: `REC_${teacher.id}_${dateStr.replace(/-/g, '')}`,
-                                            teacherId: teacher.id,
-                                            date: dateStr,
-                                            checkIn: '09:00',
-                                            checkOut: '17:00',
-                                          })
-                                        }
-                                        className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-slate-100 cursor-pointer transition-colors"
-                                        title="Log or adjust attendance for this date"
-                                      >
-                                        <Edit2 size={12} />
-                                      </button>
                                     </td>
                                   </tr>
                                 );
