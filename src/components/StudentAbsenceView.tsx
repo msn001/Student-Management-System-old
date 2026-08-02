@@ -27,6 +27,28 @@ interface AbsenceRecord {
   content: string;
 }
 
+export interface Student7DaySummary {
+  key: string;
+  studentId: string;
+  studentName: string;
+  studentTeamsId?: string;
+  subject: string;
+  teachers: string[];
+  totalScheduled: number;
+  attendedCount: number;
+  absentCount: number;
+  leaveCount: number;
+  unloggedCount: number;
+  missedDates: {
+    dateStr: string;
+    status: 'absent' | 'leave';
+    time: string;
+    teacherName: string;
+    remarks?: string;
+  }[];
+  isContinuouslyAbsent: boolean; // totalScheduled > 0 && attendedCount === 0 && (absentCount + leaveCount) > 0
+}
+
 export default function StudentAbsenceView({
   slots,
   students,
@@ -44,6 +66,8 @@ export default function StudentAbsenceView({
   const [logsCache, setLogsCache] = useState<Record<string, Record<string, Record<string, LessonEntry>>>>({});
   const [subsCache, setSubsCache] = useState<Record<string, Record<string, Record<string, string>>>>({});
   const [records, setRecords] = useState<AbsenceRecord[]>([]);
+  const [student7DayList, setStudent7DayList] = useState<Student7DaySummary[]>([]);
+  const [onlyContinuouslyAbsent, setOnlyContinuouslyAbsent] = useState<boolean>(true);
 
   // Update reference date if parent log date changes
   useEffect(() => {
@@ -181,6 +205,102 @@ export default function StudentAbsenceView({
     });
 
     setRecords(compiled);
+
+    // Compile 7-Day Continuous Student Absence Summary
+    const weekDates = getDatesInRange(referenceDate, 'week');
+    const summariesMap: Record<string, Student7DaySummary> = {};
+
+    weekDates.forEach((dateStr) => {
+      const parts = dateStr.split('-');
+      const mKey = `${parts[0]}-${parts[1]}`;
+      const monthLogs = currentLogs[mKey] || {};
+      const monthSubs = currentSubs[mKey] || {};
+
+      const dateSlots = getSlotsForDate(dateStr, slots, dailyAdjustments);
+
+      dateSlots.forEach((slot) => {
+        const student = students.find((st) => st.id === slot.studentId);
+        if (!student) return;
+
+        const regularTeacher = teachers.find((t) => t.id === slot.teacherId);
+        const subId = monthSubs[slot.id]?.[dateStr];
+        const actualTeacher = subId ? teachers.find((t) => t.id === subId) : regularTeacher;
+        const teacherName = actualTeacher?.name || regularTeacher?.name || 'Teacher';
+
+        const mapKey = `${student.id}___${slot.subject}`;
+        if (!summariesMap[mapKey]) {
+          summariesMap[mapKey] = {
+            key: mapKey,
+            studentId: student.id,
+            studentName: student.name,
+            studentTeamsId: student.teamsId || '',
+            subject: slot.subject,
+            teachers: [],
+            totalScheduled: 0,
+            attendedCount: 0,
+            absentCount: 0,
+            leaveCount: 0,
+            unloggedCount: 0,
+            missedDates: [],
+            isContinuouslyAbsent: false,
+          };
+        }
+
+        const item = summariesMap[mapKey];
+        if (!item.teachers.includes(teacherName)) {
+          item.teachers.push(teacherName);
+        }
+        item.totalScheduled += 1;
+
+        const logEntry = monthLogs[slot.id]?.[dateStr];
+        if (logEntry) {
+          if (logEntry.status === 'present') {
+            item.attendedCount += 1;
+          } else if (logEntry.status === 'absent') {
+            item.absentCount += 1;
+            item.missedDates.push({
+              dateStr,
+              status: 'absent',
+              time: slot.time,
+              teacherName,
+              remarks: logEntry.remarks,
+            });
+          } else if (logEntry.status === 'leave') {
+            item.leaveCount += 1;
+            item.missedDates.push({
+              dateStr,
+              status: 'leave',
+              time: slot.time,
+              teacherName,
+              remarks: logEntry.remarks,
+            });
+          }
+        } else {
+          item.unloggedCount += 1;
+        }
+      });
+    });
+
+    const compiled7Day = Object.values(summariesMap)
+      .map((item) => {
+        const missedCount = item.absentCount + item.leaveCount;
+        const isContinuouslyAbsent = item.totalScheduled > 0 && item.attendedCount === 0 && missedCount > 0;
+        return {
+          ...item,
+          isContinuouslyAbsent,
+        };
+      })
+      .filter((item) => item.absentCount > 0 || item.leaveCount > 0);
+
+    // Sort continuous absentees first, then by highest missed count
+    compiled7Day.sort((a, b) => {
+      if (a.isContinuouslyAbsent !== b.isContinuouslyAbsent) {
+        return a.isContinuouslyAbsent ? -1 : 1;
+      }
+      return (b.absentCount + b.leaveCount) - (a.absentCount + a.leaveCount);
+    });
+
+    setStudent7DayList(compiled7Day);
   };
 
   // Perform manual refresh
@@ -503,8 +623,8 @@ export default function StudentAbsenceView({
             <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
           </span>
           <span>⚡ 1-Click: Last 1 Week Absentees</span>
-          <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-red-100 text-red-800 font-extrabold rounded-full">
-            {records.filter(r => r.status === 'absent').length}
+          <span className="ml-1 px-2 py-0.5 text-[10px] bg-red-100 text-red-800 font-extrabold rounded-full">
+            {student7DayList.filter(s => s.isContinuouslyAbsent).length} 100% Absent
           </span>
         </button>
         <button
@@ -519,20 +639,20 @@ export default function StudentAbsenceView({
         </button>
       </div>
 
-      {/* Tab B: 1-CLICK LAST 1 WEEK ABSENTEES */}
+      {/* Tab B: 1-CLICK LAST 1 WEEK ABSENTEES (CONTINUOUS ABSENTEEISM) */}
       {activeSubTab === 'last_week_absent' && (
         <div className="space-y-4">
-          <div className="bg-red-50/80 border-2 border-red-200 p-4 rounded-xl flex items-center justify-between flex-wrap gap-3">
+          <div className="bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-200 p-4 rounded-xl flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-red-600 text-white rounded-xl shadow-xs">
                 <UserMinus size={22} />
               </div>
               <div>
                 <h3 className="font-extrabold text-sm text-red-950 uppercase tracking-wider">
-                  Students Absent in the Last 1 Week (7 Days)
+                  Students Continuously Absent in the Last 1 Week (7 Days)
                 </h3>
                 <p className="text-xs text-red-800 font-medium">
-                  Instant 1-click summary of all recorded student absences over the past 7 days up to {formatDateNice(referenceDate)}.
+                  Identifies students who did <strong>NOT attend any class (0 attended)</strong> either due to absence or leave continuously over the past 7 days up to {formatDateNice(referenceDate)}.
                 </p>
               </div>
             </div>
@@ -543,86 +663,178 @@ export default function StudentAbsenceView({
                 className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs cursor-pointer shadow-xs flex items-center gap-1.5"
               >
                 <Printer size={14} />
-                <span>Print 1-Week Absent Report</span>
+                <span>Print 1-Week Report</span>
               </button>
             </div>
           </div>
 
           {/* Quick Stats Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="bg-white border border-slate-200 p-3.5 rounded-xl text-center">
-              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Total Class Absences</span>
-              <span className="text-xl font-extrabold text-red-600">{records.filter(r => r.status === 'absent').length}</span>
-            </div>
-            <div className="bg-white border border-slate-200 p-3.5 rounded-xl text-center">
-              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Unique Students Absent</span>
-              <span className="text-xl font-extrabold text-slate-800">
-                {new Set(records.filter(r => r.status === 'absent').map(r => r.studentName)).size}
+            <div className="bg-white border-2 border-red-200 p-3.5 rounded-xl text-center shadow-2xs">
+              <span className="text-[10px] font-extrabold text-red-700 uppercase tracking-wider block">🔴 100% Continuously Absent Students</span>
+              <span className="text-2xl font-black text-red-600">
+                {student7DayList.filter(s => s.isContinuouslyAbsent).length}
               </span>
+              <span className="text-[10px] font-semibold text-red-500 block">Attended 0 classes in 7 days</span>
             </div>
-            <div className="bg-white border border-slate-200 p-3.5 rounded-xl text-center">
-              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Date Scope</span>
-              <span className="text-xs font-bold text-slate-700">Past 7 Days</span>
+            <div className="bg-white border border-slate-200 p-3.5 rounded-xl text-center shadow-2xs">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Total Class Sessions Missed</span>
+              <span className="text-2xl font-black text-slate-800">
+                {records.filter(r => r.status === 'absent' || r.status === 'leave').length}
+              </span>
+              <span className="text-[10px] font-semibold text-slate-500 block">Across all students in 7 days</span>
+            </div>
+            <div className="bg-white border border-slate-200 p-3.5 rounded-xl text-center shadow-2xs">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">7-Day Date Range</span>
+              <span className="text-xs font-bold text-slate-700 block mt-1">
+                {formatDateNice(getDatesInRange(referenceDate, 'week')[6])} &ndash; {formatDateNice(referenceDate)}
+              </span>
             </div>
           </div>
 
-          {/* Table of Absentees */}
-          {records.filter(r => r.status === 'absent').length === 0 ? (
-            <div className="p-8 bg-white border border-dashed border-slate-200 rounded-xl text-center text-slate-500 font-semibold text-xs">
-              🎉 No students were recorded absent in the last 1 week!
+          {/* Filter Toolbar */}
+          <div className="bg-white p-3 border border-slate-200 rounded-xl flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="rounded text-red-600 focus:ring-red-500 cursor-pointer h-4 w-4"
+                  checked={onlyContinuouslyAbsent}
+                  onChange={(e) => setOnlyContinuouslyAbsent(e.target.checked)}
+                />
+                <span className="text-red-700 font-extrabold">
+                  Show 100% Continuously Absent Only (0 Classes Attended in 7 Days)
+                </span>
+              </label>
             </div>
-          ) : (
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
-                  <tr>
-                    <th className="p-3">Date</th>
-                    <th className="p-3">Student Name</th>
-                    <th className="p-3">Teams / ID</th>
-                    <th className="p-3">Subject</th>
-                    <th className="p-3">Class Time</th>
-                    <th className="p-3">Teacher</th>
-                    <th className="p-3">Status</th>
-                    <th className="p-3">Remarks</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {records.filter(r => r.status === 'absent').map((rec) => (
-                    <tr key={rec.id} className="hover:bg-red-50/20 transition-colors">
-                      <td className="p-3 font-bold text-slate-900 whitespace-nowrap">
-                        {formatDateNice(rec.dateStr)}
-                      </td>
-                      <td className="p-3 font-extrabold text-slate-900">
-                        {rec.studentName}
-                      </td>
-                      <td className="p-3 font-mono text-[11px] text-slate-600">
-                        {rec.studentTeamsId || '—'}
-                      </td>
-                      <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getSubjectClass(rec.subject)}`}>
-                          {rec.subject}
-                        </span>
-                      </td>
-                      <td className="p-3 font-mono text-slate-600">
-                        {rec.time} ({rec.duration}m)
-                      </td>
-                      <td className="p-3 font-semibold text-slate-700">
-                        {rec.actualTeacherName}
-                      </td>
-                      <td className="p-3">
-                        <span className="px-2 py-0.5 bg-red-100 text-red-800 border border-red-200 text-[10px] font-extrabold rounded-md uppercase">
-                          Absent
-                        </span>
-                      </td>
-                      <td className="p-3 text-slate-600 italic">
-                        {rec.remarks || 'No remarks provided'}
-                      </td>
+
+            <div className="relative min-w-[220px]">
+              <Search size={14} className="absolute left-2.5 top-2.5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search student or subject..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-red-500"
+              />
+            </div>
+          </div>
+
+          {/* Table of Student 7-Day Continuous Absences */}
+          {(() => {
+            const filtered7Day = student7DayList.filter((item) => {
+              if (onlyContinuouslyAbsent && !item.isContinuouslyAbsent) return false;
+              if (searchTerm.trim()) {
+                const term = searchTerm.toLowerCase();
+                const mName = item.studentName.toLowerCase().includes(term);
+                const mSub = item.subject.toLowerCase().includes(term);
+                const mTeams = item.studentTeamsId?.toLowerCase().includes(term);
+                return mName || mSub || mTeams;
+              }
+              return true;
+            });
+
+            if (filtered7Day.length === 0) {
+              return (
+                <div className="p-8 bg-white border border-dashed border-slate-200 rounded-xl text-center space-y-2">
+                  <div className="text-2xl">🎉</div>
+                  <p className="text-slate-700 font-extrabold text-sm">
+                    {onlyContinuouslyAbsent
+                      ? 'No students were 100% continuously absent (0 classes attended) in the last 7 days!'
+                      : 'No student absence records found for the search criteria.'}
+                  </p>
+                  {onlyContinuouslyAbsent && (
+                    <button
+                      onClick={() => setOnlyContinuouslyAbsent(false)}
+                      className="text-xs font-bold text-blue-600 hover:underline cursor-pointer"
+                    >
+                      Show all students with any absences in the last 7 days &rarr;
+                    </button>
+                  )}
+                </div>
+              );
+            }
+
+            return (
+              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
+                    <tr>
+                      <th className="p-3">Student Name</th>
+                      <th className="p-3">Teams / ID</th>
+                      <th className="p-3">Subject</th>
+                      <th className="p-3">7-Day Attendance Rate</th>
+                      <th className="p-3">Status Badge</th>
+                      <th className="p-3">Missed Dates & Teachers</th>
+                      <th className="p-3">Latest Remarks</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filtered7Day.map((item) => (
+                      <tr key={item.key} className={`hover:bg-red-50/20 transition-colors ${item.isContinuouslyAbsent ? 'bg-red-50/10' : ''}`}>
+                        <td className="p-3 font-extrabold text-slate-900">
+                          {item.studentName}
+                        </td>
+                        <td className="p-3 font-mono text-[11px] text-slate-600">
+                          {item.studentTeamsId || '—'}
+                        </td>
+                        <td className="p-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getSubjectClass(item.subject)}`}>
+                            {item.subject}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          <div className="font-extrabold text-slate-800">
+                            {item.attendedCount} / {item.totalScheduled} Attended
+                            <span className="text-[10px] font-semibold text-slate-500 ml-1">
+                              ({Math.round((item.attendedCount / item.totalScheduled) * 100)}%)
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+                            {item.absentCount} Absent, {item.leaveCount} Leave
+                          </div>
+                        </td>
+                        <td className="p-3 whitespace-nowrap">
+                          {item.isContinuouslyAbsent ? (
+                            <span className="px-2.5 py-1 bg-red-100 text-red-800 border border-red-300 text-[10px] font-black rounded-lg uppercase tracking-wide flex items-center gap-1 w-fit shadow-xs">
+                              🔴 100% Continuously Absent
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-bold rounded-md uppercase">
+                              🟡 Partial Absence
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          <div className="flex flex-wrap gap-1 max-w-md">
+                            {item.missedDates.map((md, idx) => (
+                              <span
+                                key={idx}
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                                  md.status === 'absent'
+                                    ? 'bg-red-50 text-red-700 border-red-200'
+                                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                                }`}
+                                title={`Teacher: ${md.teacherName} | Status: ${md.status} ${md.remarks ? '| Remarks: ' + md.remarks : ''}`}
+                              >
+                                {formatDateNice(md.dateStr)} ({md.status})
+                              </span>
+                            ))}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-medium mt-1">
+                            Teachers: {item.teachers.join(', ') || '—'}
+                          </div>
+                        </td>
+                        <td className="p-3 text-slate-600 italic max-w-xs">
+                          {item.missedDates.find(md => md.remarks)?.remarks || 'No remarks recorded'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
         </div>
       )}
 
