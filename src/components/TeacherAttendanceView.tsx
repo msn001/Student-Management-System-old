@@ -19,7 +19,7 @@ interface ScanResult {
 }
 
 export default function TeacherAttendanceView() {
-  const [activeSubTab, setActiveSubTab] = useState<'live' | 'report' | 'settings'>('live');
+  const [activeSubTab, setActiveSubTab] = useState<'live' | 'report'>('live');
   const [teachers, setTeachers] = useState<AttendanceTeacher[]>([]);
   const [todayRecords, setTodayRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -29,7 +29,6 @@ export default function TeacherAttendanceView() {
   const [securitySettings, setSecuritySettings] = useState<AttendanceSettings>(DEFAULT_ATTENDANCE_SETTINGS);
   const [dailyPasscodeInput, setDailyPasscodeInput] = useState('');
   const [isThisKiosk, setIsThisKiosk] = useState(false);
-  const [saveSettingsSuccess, setSaveSettingsSuccess] = useState(false);
 
   // Clock state
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -497,16 +496,6 @@ export default function TeacherAttendanceView() {
         >
           <ClipboardList size={16} /> Read-Only Report
         </button>
-        <button
-          onClick={() => setActiveSubTab('settings')}
-          className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
-            activeSubTab === 'settings'
-              ? 'border-blue-600 text-blue-600 font-bold bg-blue-50/20'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <Settings size={16} /> Arrival Times & Shifts
-        </button>
       </div>
 
       {activeSubTab === 'live' ? (
@@ -737,7 +726,7 @@ export default function TeacherAttendanceView() {
           </div>
 
         </div>
-      ) : activeSubTab === 'report' ? (
+      ) : (
         // Read-only Report View
         <div className="space-y-6">
           {/* Controls Bar */}
@@ -1082,175 +1071,6 @@ export default function TeacherAttendanceView() {
                 })}
             </div>
           )}
-        </div>
-      ) : (
-        /* Settings Sub-Tab: Custom Arrival Times per Teacher */
-        <div className="space-y-6 max-w-4xl">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-              <div>
-                <h3 className="serif-title font-bold text-lg text-slate-800 flex items-center gap-2">
-                  <Clock className="text-blue-600" size={20} /> Teacher Expected Arrival Times
-                </h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Configure custom shift start times for each teacher. Check-ins after their target time will be counted as late arrivals.
-                </p>
-              </div>
-
-              <button
-                onClick={async () => {
-                  await StorageService.saveKey('attendanceSettings', securitySettings);
-                  setSaveSettingsSuccess(true);
-                  setTimeout(() => setSaveSettingsSuccess(false), 3000);
-                }}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl flex items-center gap-2 shadow-xs cursor-pointer transition-colors shrink-0"
-              >
-                {saveSettingsSuccess ? <Check size={14} /> : <Save size={14} />}
-                {saveSettingsSuccess ? 'Saved!' : 'Save Arrival Times'}
-              </button>
-            </div>
-
-            {saveSettingsSuccess && (
-              <div className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-xs font-semibold flex items-center gap-2">
-                <CheckCircle2 size={16} /> Arrival time settings updated and saved successfully!
-              </div>
-            )}
-
-            {/* Default arrival time */}
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">Default Target Arrival Time</label>
-                <span className="text-[11px] text-slate-500">Fallback arrival time for all teachers unless a custom time is set below.</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="time"
-                  className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-800 bg-white focus:outline-none focus:border-blue-500"
-                  value={securitySettings.defaultArrivalTime || '09:00'}
-                  onChange={(e) => {
-                    setSecuritySettings((prev) => ({
-                      ...prev,
-                      defaultArrivalTime: e.target.value,
-                    }));
-                  }}
-                />
-                <span className="text-xs font-semibold text-slate-500">({formatTimeToAMPM(securitySettings.defaultArrivalTime || '09:00')})</span>
-              </div>
-            </div>
-
-            {/* Teacher Specific list */}
-            <div className="space-y-3">
-              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Per-Teacher Custom Arrival Times</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {teachers.map((t) => {
-                  const currentCustom = securitySettings.teacherArrivalTimes?.[t.id] || securitySettings.teacherArrivalTimes?.[t.name] || securitySettings.defaultArrivalTime || '09:00';
-                  return (
-                    <div key={t.id} className="p-4 bg-white border border-slate-200 rounded-xl flex flex-col gap-3 shadow-2xs hover:border-slate-300 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 font-bold text-xs flex items-center justify-center border border-blue-100">
-                            {t.name.slice(0, 2).toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="font-semibold text-sm text-slate-800">{t.name}</div>
-                            <div className="text-[10px] text-slate-400">{t.subject || 'General'}</div>
-                          </div>
-                        </div>
-                        <span className="text-xs font-mono font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-100">
-                          Target: {formatTimeToAMPM(currentCustom)}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="time"
-                          className="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-mono font-bold text-slate-800 bg-white focus:outline-none focus:border-blue-500"
-                          value={currentCustom}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setSecuritySettings((prev) => ({
-                              ...prev,
-                              teacherArrivalTimes: {
-                                ...(prev.teacherArrivalTimes || {}),
-                                [t.id]: val,
-                                [t.name]: val,
-                              },
-                            }));
-                          }}
-                        />
-
-                        {/* Presets */}
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSecuritySettings((prev) => ({
-                                ...prev,
-                                teacherArrivalTimes: {
-                                  ...(prev.teacherArrivalTimes || {}),
-                                  [t.id]: '09:00',
-                                  [t.name]: '09:00',
-                                },
-                              }));
-                            }}
-                            className="px-2 py-1 text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 rounded text-slate-700 cursor-pointer"
-                          >
-                            9 AM
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSecuritySettings((prev) => ({
-                                ...prev,
-                                teacherArrivalTimes: {
-                                  ...(prev.teacherArrivalTimes || {}),
-                                  [t.id]: '14:00',
-                                  [t.name]: '14:00',
-                                },
-                              }));
-                            }}
-                            className="px-2 py-1 text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 rounded text-slate-700 cursor-pointer"
-                          >
-                            2 PM
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSecuritySettings((prev) => ({
-                                ...prev,
-                                teacherArrivalTimes: {
-                                  ...(prev.teacherArrivalTimes || {}),
-                                  [t.id]: '17:00',
-                                  [t.name]: '17:00',
-                                },
-                              }));
-                            }}
-                            className="px-2 py-1 text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 rounded text-slate-700 cursor-pointer"
-                          >
-                            5 PM
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-slate-100 flex justify-end">
-              <button
-                onClick={async () => {
-                  await StorageService.saveKey('attendanceSettings', securitySettings);
-                  setSaveSettingsSuccess(true);
-                  setTimeout(() => setSaveSettingsSuccess(false), 3000);
-                }}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl flex items-center gap-2 shadow-xs cursor-pointer transition-colors"
-              >
-                {saveSettingsSuccess ? <Check size={14} /> : <Save size={14} />}
-                {saveSettingsSuccess ? 'Settings Saved' : 'Save Arrival Times'}
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>

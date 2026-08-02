@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ClassSlot, Student, Teacher } from '../types';
 import { StorageService } from '../lib/storage';
-import { Plus, Edit, Trash2, Search, X, Check, ChevronDown } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, X, Check, ChevronDown, RotateCcw, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { getStudentDisplayName, formatTimeToAMPM } from '../lib/utils';
 
 interface TimetableViewProps {
@@ -9,6 +9,7 @@ interface TimetableViewProps {
   students: Student[];
   teachers: Teacher[];
   onUpdateSlots: (slots: ClassSlot[]) => void;
+  onOpenRestoreModal?: () => void;
 }
 
 const DAYS_OF_WEEK = [
@@ -24,7 +25,7 @@ const DAYS_OF_WEEK = [
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export default function TimetableView({ slots, students, teachers, onUpdateSlots }: TimetableViewProps) {
+export default function TimetableView({ slots, students, teachers, onUpdateSlots, onOpenRestoreModal }: TimetableViewProps) {
   const [studentId, setStudentId] = useState('');
   const [subject, setSubject] = useState('Math');
   const [subjectOther, setSubjectOther] = useState('');
@@ -532,64 +533,88 @@ export default function TimetableView({ slots, students, teachers, onUpdateSlots
       </fieldset>
 
       {/* Filter Toolbar */}
-      <div className="flex flex-wrap gap-3 mb-4 items-center bg-slate-50 p-4 rounded-xl border border-[var(--line)]">
-        <div className="relative max-w-xs flex-1">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input
-            type="text"
-            className="w-full pl-9 pr-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:border-[var(--accent)] focus:outline-none text-sm placeholder-slate-400"
-            placeholder="Search student, Teams ID, teacher, subject..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+      <div className="flex flex-wrap gap-3 mb-4 items-center justify-between bg-slate-50 p-4 rounded-xl border border-[var(--line)]">
+        <div className="flex flex-wrap gap-3 items-center flex-1">
+          <div className="relative max-w-xs flex-1">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              className="w-full pl-9 pr-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:border-[var(--accent)] focus:outline-none text-sm placeholder-slate-400"
+              placeholder="Search student, Teams ID, teacher, subject..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          <select
+            className="px-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:outline-none focus:border-[var(--accent)] text-sm"
+            value={filterStudent}
+            onChange={(e) => setFilterStudent(e.target.value)}
+          >
+            <option value="">All students</option>
+            {students
+              .slice()
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} {s.teamsId ? `(Teams: ${s.teamsId})` : ''}
+                </option>
+              ))}
+          </select>
+
+          <select
+            className="px-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:outline-none focus:border-[var(--accent)] text-sm"
+            value={filterTeacher}
+            onChange={(e) => setFilterTeacher(e.target.value)}
+          >
+            <option value="">All teachers</option>
+            {teachers
+              .slice()
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+          </select>
+
+          <select
+            className="px-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:outline-none focus:border-[var(--accent)] text-sm"
+            value={filterDay}
+            onChange={(e) => setFilterDay(e.target.value)}
+          >
+            <option value="">All days</option>
+            <option value="1">Monday</option>
+            <option value="2">Tuesday</option>
+            <option value="3">Wednesday</option>
+            <option value="4">Thursday</option>
+            <option value="5">Friday</option>
+            <option value="6">Saturday</option>
+            <option value="0">Sunday</option>
+          </select>
         </div>
 
-        <select
-          className="px-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:outline-none focus:border-[var(--accent)] text-sm"
-          value={filterStudent}
-          onChange={(e) => setFilterStudent(e.target.value)}
-        >
-          <option value="">All students</option>
-          {students
-            .slice()
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} {s.teamsId ? `(Teams: ${s.teamsId})` : ''}
-              </option>
-            ))}
-        </select>
-
-        <select
-          className="px-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:outline-none focus:border-[var(--accent)] text-sm"
-          value={filterTeacher}
-          onChange={(e) => setFilterTeacher(e.target.value)}
-        >
-          <option value="">All teachers</option>
-          {teachers
-            .slice()
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-        </select>
-
-        <select
-          className="px-3 py-1.5 border border-[var(--line-strong)] bg-white rounded focus:outline-none focus:border-[var(--accent)]"
-          value={filterDay}
-          onChange={(e) => setFilterDay(e.target.value)}
-        >
-          <option value="">All days</option>
-          <option value="1">Monday</option>
-          <option value="2">Tuesday</option>
-          <option value="3">Wednesday</option>
-          <option value="4">Thursday</option>
-          <option value="5">Friday</option>
-          <option value="6">Saturday</option>
-          <option value="0">Sunday</option>
-        </select>
+        {onOpenRestoreModal && (
+          <button
+            onClick={onOpenRestoreModal}
+            className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold rounded-lg text-xs cursor-pointer flex items-center gap-1.5 shadow-3xs transition-colors shrink-0"
+            title="Diagnose corrupted teacher IDs or restore backup snapshots"
+          >
+            <RotateCcw size={14} className="text-blue-600" />
+            <span>Data Health &amp; Restore</span>
+            {(() => {
+              const orphanedCount = slots.filter((s) => !teachers.some((t) => t.id === s.teacherId)).length;
+              if (orphanedCount > 0) {
+                return (
+                  <span className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.2 rounded-full font-extrabold flex items-center gap-0.5">
+                    <AlertTriangle size={10} /> {orphanedCount} issue(s)
+                  </span>
+                );
+              }
+              return null;
+            })()}
+          </button>
+        )}
       </div>
 
       {/* Slots Table */}
@@ -612,60 +637,71 @@ export default function TimetableView({ slots, students, teachers, onUpdateSlots
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-100">
-              {filteredSlots.map(({ slot, studentName, teacherName }) => (
-                <tr key={slot.id} className="hover:bg-slate-50/50">
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <span className="inline-block px-2 py-0.5 bg-slate-100 font-mono text-[11px] font-bold text-slate-600 rounded">
-                      {DAY_SHORT[slot.day]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-slate-700">
-                    {formatTimeToAMPM(slot.time)}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-slate-900">
-                    <div>{studentName}</div>
-                    {(() => {
-                      const studentObj = students.find((s) => s.id === slot.studentId);
-                      if (!studentObj) return null;
-                      return (
-                        <div className="flex gap-1.5 mt-0.5">
-                          {studentObj.zoom && (
-                            <span className="inline-block text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded border border-blue-100 font-mono" title={`Zoom: ${studentObj.zoom}`}>
-                              Zoom: {studentObj.zoom}
-                            </span>
-                          )}
-                          {studentObj.teamsId && (
-                            <span className="inline-block text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.2 rounded border border-indigo-100 font-mono" title={`Teams: ${studentObj.teamsId}`}>
-                              Teams: {studentObj.teamsId}
-                            </span>
-                          )}
-                          {studentObj.googleMeet && (
-                            <span className="inline-block text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded border border-emerald-100 font-mono" title={`Meet: ${studentObj.googleMeet}`}>
-                              Meet: {studentObj.googleMeet}
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full ${getSubjectClass(slot.subject)}`}>
-                      {slot.subject}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <select
-                      className="text-sm px-2 py-1 border border-slate-300 bg-white rounded focus:outline-none focus:border-[var(--accent)]"
-                      value={slot.teacherId}
-                      onChange={(e) => handleReassignTeacher(slot.id, e.target.value)}
-                    >
-                      {teachers.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
+              {filteredSlots.map(({ slot, studentName, teacherName }) => {
+                const isTeacherMissing = !teachers.some((t) => t.id === slot.teacherId);
+                return (
+                  <tr key={slot.id} className={`hover:bg-slate-50/50 ${isTeacherMissing ? 'bg-amber-50/40' : ''}`}>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="inline-block px-2 py-0.5 bg-slate-100 font-mono text-[11px] font-bold text-slate-600 rounded">
+                        {DAY_SHORT[slot.day]}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-slate-700">
+                      {formatTimeToAMPM(slot.time)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-slate-900">
+                      <div>{studentName}</div>
+                      {(() => {
+                        const studentObj = students.find((s) => s.id === slot.studentId);
+                        if (!studentObj) return null;
+                        return (
+                          <div className="flex gap-1.5 mt-0.5">
+                            {studentObj.zoom && (
+                              <span className="inline-block text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded border border-blue-100 font-mono" title={`Zoom: ${studentObj.zoom}`}>
+                                Zoom: {studentObj.zoom}
+                              </span>
+                            )}
+                            {studentObj.teamsId && (
+                              <span className="inline-block text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.2 rounded border border-indigo-100 font-mono" title={`Teams: ${studentObj.teamsId}`}>
+                                Teams: {studentObj.teamsId}
+                              </span>
+                            )}
+                            {studentObj.googleMeet && (
+                              <span className="inline-block text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded border border-emerald-100 font-mono" title={`Meet: ${studentObj.googleMeet}`}>
+                                Meet: {studentObj.googleMeet}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full ${getSubjectClass(slot.subject)}`}>
+                        {slot.subject}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <select
+                        className={`text-sm px-2 py-1 border rounded focus:outline-none ${
+                          isTeacherMissing
+                            ? 'border-amber-400 bg-amber-50 text-amber-900 font-bold'
+                            : 'border-slate-300 bg-white focus:border-[var(--accent)]'
+                        }`}
+                        value={slot.teacherId}
+                        onChange={(e) => handleReassignTeacher(slot.id, e.target.value)}
+                      >
+                        {isTeacherMissing && (
+                          <option value={slot.teacherId}>
+                            ⚠️ Unassigned / Missing Teacher
+                          </option>
+                        )}
+                        {teachers.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
                   <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-600">
                     {slot.duration} min
                   </td>
@@ -684,8 +720,9 @@ export default function TimetableView({ slots, students, teachers, onUpdateSlots
                     </button>
                   </td>
                 </tr>
-              ))}
-            </tbody>
+              );
+            })}
+          </tbody>
           </table>
         </div>
       )}

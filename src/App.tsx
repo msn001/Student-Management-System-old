@@ -16,6 +16,7 @@ import StudentAbsenceView from './components/StudentAbsenceView';
 import PruneDataModal from './components/PruneDataModal';
 import StorageUsageCard from './components/StorageUsageCard';
 import AdminRemindersModal from './components/AdminRemindersModal';
+import DataRestoreModal from './components/DataRestoreModal';
 import { BookOpen, Calendar, Clock, Clipboard, Users, GraduationCap, Menu, X, Lock, Unlock, Settings, Key, CalendarClock, Fingerprint, UserCheck, UserX, Upload, Trash2, Image, HardDrive, Bell } from 'lucide-react';
 
 const LOCKED_TABS = ['timetable', 'people', 'adjustments', 'manage_attendance', 'student_absence'];
@@ -55,6 +56,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAdminRemindersOpen, setIsAdminRemindersOpen] = useState(false);
+  const [isDataRestoreOpen, setIsDataRestoreOpen] = useState(false);
   const [schoolLogo, setSchoolLogo] = useState(() => {
     return localStorage.getItem('lesson_register_logo') || '';
   });
@@ -760,6 +762,7 @@ export default function App() {
                   students={students}
                   teachers={teachers}
                   onUpdateSlots={setSlots}
+                  onOpenRestoreModal={() => setIsDataRestoreOpen(true)}
                 />
               )}
 
@@ -1040,6 +1043,18 @@ export default function App() {
       <AdminRemindersModal
         isOpen={isAdminRemindersOpen}
         onClose={() => setIsAdminRemindersOpen(false)}
+      />
+
+      {/* Data Health & Restoration Modal */}
+      <DataRestoreModal
+        isOpen={isDataRestoreOpen}
+        onClose={() => setIsDataRestoreOpen(false)}
+        slots={slots}
+        teachers={teachers}
+        students={students}
+        onUpdateSlots={setSlots}
+        onUpdateTeachers={setTeachers}
+        onUpdateStudents={setStudents}
       />
     </div>
   );

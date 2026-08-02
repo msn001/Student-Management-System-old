@@ -78,9 +78,15 @@ export class StorageService {
     return val !== null ? (val as T) : fallback;
   }
 
-  // Save standard keys
+  // Save standard keys with automatic history snapshot backing
   static async saveKey<T>(key: string, value: T): Promise<boolean> {
     localStore.set(key, value);
+
+    // Auto-create history snapshot for core keys
+    if (['teachers', 'students', 'slots', 'studentProfiles', 'dailyAdjustments'].includes(key)) {
+      this.createBackupSnapshot(key, value);
+    }
+
     if (db) {
       try {
         const docRef = doc(db, 'lesson_register_store', key);
@@ -99,6 +105,123 @@ export class StorageService {
       }
     }
     return true;
+  }
+
+  // Create timestamped snapshot in localStorage (max 10 retained per key)
+  static createBackupSnapshot(key: string, data: any): void {
+    try {
+      if (!data) return;
+      const historyKey = `backup_snapshots_${key}`;
+      const existingRaw = localStorage.getItem(historyKey);
+      let history: { id: string; timestamp: string; label: string; count: number; data: any }[] = existingRaw ? JSON.parse(existingRaw) : [];
+
+      const count = Array.isArray(data) ? data.length : Object.keys(data).length;
+      const now = new Date();
+      const timestampStr = now.toISOString();
+      const labelStr = `${now.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} at ${now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
+
+      // Don't duplicate if identical data saved within 5 seconds
+      if (history.length > 0) {
+        const last = history[0];
+        if (JSON.stringify(last.data) === JSON.stringify(data)) {
+          return;
+        }
+      }
+
+      history.unshift({
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        timestamp: timestampStr,
+        label: labelStr,
+        count,
+        data: JSON.parse(JSON.stringify(data)),
+      });
+
+      // Retain max 10 snapshots
+      if (history.length > 10) {
+        history = history.slice(0, 10);
+      }
+
+      localStorage.setItem(historyKey, JSON.stringify(history));
+    } catch (e) {
+      console.error(`Error saving backup snapshot for ${key}:`, e);
+    }
+  }
+
+  // Get list of available backup snapshots for a key
+  static getBackupSnapshots(key: string): { id: string; timestamp: string; label: string; count: number; data: any }[] {
+    try {
+      const historyKey = `backup_snapshots_${key}`;
+      const existingRaw = localStorage.getItem(historyKey);
+      return existingRaw ? JSON.parse(existingRaw) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  // Restore a specific backup snapshot
+  static async restoreBackupSnapshot(key: string, snapshotId: string): Promise<boolean> {
+    const snapshots = this.getBackupSnapshots(key);
+    const target = snapshots.find((s) => s.id === snapshotId);
+    if (!target) return false;
+
+    return await this.saveKey(key, target.data);
+  }
+
+  // Export full system JSON backup
+  static async exportFullBackup(): Promise<string> {
+    const teachers = await this.loadKey<Teacher[]>('teachers', []);
+    const students = await this.loadKey<Student[]>('students', []);
+    const slots = await this.loadKey<ClassSlot[]>('slots', []);
+    const studentProfiles = await this.loadKey<Record<string, StudentProfile>>('studentProfiles', {});
+    const dailyAdjustments = await this.loadKey<Record<string, any>>('dailyAdjustments', {});
+    const schoolLogo = localStorage.getItem('lesson_register_logo') || '';
+
+    const exportData = {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      teachers,
+      students,
+      slots,
+      studentProfiles,
+      dailyAdjustments,
+      schoolLogo,
+    };
+
+    return JSON.stringify(exportData, null, 2);
+  }
+
+  // Import full system JSON backup
+  static async importFullBackup(jsonStr: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const data = JSON.parse(jsonStr);
+      if (!data || typeof data !== 'object') {
+        return { success: false, message: 'Invalid JSON file format.' };
+      }
+
+      if (Array.isArray(data.teachers)) {
+        await this.saveKey('teachers', data.teachers);
+      }
+      if (Array.isArray(data.students)) {
+        await this.saveKey('students', data.students);
+      }
+      if (Array.isArray(data.slots)) {
+        await this.saveKey('slots', data.slots);
+      }
+      if (data.studentProfiles && typeof data.studentProfiles === 'object') {
+        await this.saveKey('studentProfiles', data.studentProfiles);
+      }
+      if (data.dailyAdjustments && typeof data.dailyAdjustments === 'object') {
+        await this.saveKey('dailyAdjustments', data.dailyAdjustments);
+      }
+      if (data.schoolLogo) {
+        localStorage.setItem('lesson_register_logo', data.schoolLogo);
+        await this.saveKey('schoolLogo', data.schoolLogo);
+      }
+
+      return { success: true, message: 'Backup restored successfully!' };
+    } catch (e: any) {
+      return { success: false, message: `Failed to import backup: ${e.message}` };
+    }
   }
 
   // Get month log entries
