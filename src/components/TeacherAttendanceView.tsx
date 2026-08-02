@@ -875,7 +875,7 @@ export default function TeacherAttendanceView() {
                             {Array.from({ length: daysInMonth }).map((_, dIdx) => {
                               const dNum = dIdx + 1;
                               const dateStr = `${reportYear}-${String(reportMonth + 1).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
-                              const dateObj = new Date(dateStr);
+                              const dateObj = new Date(reportYear, reportMonth, dNum);
                               const dayName = dateObj.toLocaleDateString(undefined, { weekday: 'short' });
                               const dayRecs = tRecs.filter((r) => r.date === dateStr);
                               const isPast = dateObj <= today;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AttendanceService, AttendanceTeacher, AttendanceRecord, AttendanceSettings, DEFAULT_ATTENDANCE_SETTINGS, getDailyPasscode } from '../lib/attendanceService';
-import { UserCheck, Plus, Trash2, Edit2, X, Check, AlertTriangle, Printer, User, QrCode, ClipboardList, ShieldAlert, MapPin, Lock, Smartphone, Laptop, KeyRound, Activity, HardDrive } from 'lucide-react';
+import { UserCheck, Plus, Trash2, Edit2, X, Check, AlertTriangle, Printer, User, QrCode, ClipboardList, ShieldAlert, MapPin, Lock, Smartphone, Laptop, KeyRound, Activity, HardDrive, Pencil, Eye, EyeOff } from 'lucide-react';
 import { formatTimeToAMPM } from '../lib/utils';
 import { StorageService } from '../lib/storage';
 import PruneDataModal from './PruneDataModal';
@@ -38,6 +38,41 @@ export default function ManageAttendanceView() {
 
   // Local storage/memory cache for PINs of newly created teachers in this session (as the server doesn't return PINs back for safety)
   const [sessionPins, setSessionPins] = useState<Record<string, string>>({});
+
+  // Teacher PIN editing state
+  const [editingTeacherId, setEditingTeacherId] = useState<string | null>(null);
+  const [editingPinInput, setEditingPinInput] = useState('');
+  const [pinSaving, setPinSaving] = useState(false);
+  const [pinMasked, setPinMasked] = useState(false);
+
+  const startEditPin = (t: AttendanceTeacher) => {
+    setEditingTeacherId(t.id);
+    setEditingPinInput(t.pin || sessionPins[t.id] || '1001');
+  };
+
+  const cancelEditPin = () => {
+    setEditingTeacherId(null);
+    setEditingPinInput('');
+  };
+
+  const handleSavePin = async (id: string) => {
+    const trimmed = editingPinInput.trim();
+    if (!/^\d{4}$/.test(trimmed)) {
+      alert('PIN must be exactly 4 digits (e.g., 1234)');
+      return;
+    }
+    setPinSaving(true);
+    try {
+      await AttendanceService.updateTeacherPin(id, trimmed);
+      setTeachers((prev) => prev.map((t) => (t.id === id ? { ...t, pin: trimmed } : t)));
+      setSessionPins((prev) => ({ ...prev, [id]: trimmed }));
+      setEditingTeacherId(null);
+    } catch (err: any) {
+      alert(`Failed to save PIN: ${err.message || err}`);
+    } finally {
+      setPinSaving(false);
+    }
+  };
 
   // QR Code base URL state
   const [baseUrl, setBaseUrl] = useState(() => {
@@ -626,7 +661,18 @@ export default function ManageAttendanceView() {
                       <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                         <th className="p-3">Name</th>
                         <th className="p-3">Subject</th>
-                        <th className="p-3 text-center">PIN</th>
+                        <th className="p-3 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <span>PIN</span>
+                            <button
+                              onClick={() => setPinMasked(!pinMasked)}
+                              className="p-0.5 text-slate-400 hover:text-slate-600 transition-colors"
+                              title={pinMasked ? 'Show PINs' : 'Hide PINs'}
+                            >
+                              {pinMasked ? <EyeOff size={11} /> : <Eye size={11} />}
+                            </button>
+                          </div>
+                        </th>
                         <th className="p-3 text-right">Actions</th>
                       </tr>
                     </thead>
@@ -635,13 +681,53 @@ export default function ManageAttendanceView() {
                         <tr key={t.id} className="border-b border-slate-100 hover:bg-slate-50/30">
                           <td className="p-3 font-semibold text-slate-800">{t.name}</td>
                           <td className="p-3 text-slate-500">{t.subject || '—'}</td>
-                          <td className="p-3 text-center font-mono font-bold text-slate-600 tracking-widest">
-                            {sessionPins[t.id] || t.pin || '••••'}
+                          <td className="p-3 text-center">
+                            {editingTeacherId === t.id ? (
+                              <div className="flex items-center justify-center gap-1">
+                                <input
+                                  type="text"
+                                  maxLength={4}
+                                  value={editingPinInput}
+                                  onChange={(e) => setEditingPinInput(e.target.value)}
+                                  className="w-16 px-1.5 py-0.5 border border-blue-400 rounded font-mono text-center text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={() => handleSavePin(t.id)}
+                                  disabled={pinSaving}
+                                  className="p-1 bg-green-600 hover:bg-green-700 text-white rounded cursor-pointer transition-colors shadow-2xs"
+                                  title="Save PIN"
+                                >
+                                  <Check size={12} />
+                                </button>
+                                <button
+                                  onClick={cancelEditPin}
+                                  disabled={pinSaving}
+                                  className="p-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded cursor-pointer transition-colors"
+                                  title="Cancel"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-center gap-1.5">
+                                <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-0.5 rounded text-xs tracking-widest shadow-3xs">
+                                  {pinMasked ? '••••' : (sessionPins[t.id] || t.pin || '1001')}
+                                </span>
+                                <button
+                                  onClick={() => startEditPin(t)}
+                                  className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-200 rounded transition-all cursor-pointer"
+                                  title="Edit PIN code"
+                                >
+                                  <Pencil size={12} />
+                                </button>
+                              </div>
+                            )}
                           </td>
                           <td className="p-3 text-right">
                             <button
                               onClick={() => handleRemoveTeacher(t.id, t.name)}
-                              className="p-1 px-2.5 bg-red-50 text-[10px] font-bold text-red-600 rounded-lg hover:bg-red-100 transition-colors cursor-pointer inline-flex items-center gap-0.5"
+                              className="p-1 px-2.5 bg-red-50 text-[10px] font-bold text-red-600 rounded-lg hover:bg-red-100 border border-red-100 transition-colors cursor-pointer inline-flex items-center gap-0.5"
                             >
                               <Trash2 size={10} /> Remove
                             </button>
@@ -650,8 +736,9 @@ export default function ManageAttendanceView() {
                       ))}
                     </tbody>
                   </table>
-                  <p className="text-[10px] text-slate-400 leading-normal p-3 bg-slate-50 rounded-xl border border-slate-100 mt-4 italic">
-                    Note: To maximize system security, PINs are only shown right after adding a teacher. Once you leave this page or refresh, they will be masked.
+                  <p className="text-[10px] text-slate-500 leading-normal p-3 bg-blue-50/50 rounded-xl border border-blue-100 mt-4 flex items-center gap-1.5 font-medium">
+                    <KeyRound size={12} className="text-blue-600 shrink-0" />
+                    <span>Admin Lock Tab: PINs are fully visible and editable. Click the pencil icon next to any teacher's PIN to change it.</span>
                   </p>
                 </div>
               )}
@@ -865,7 +952,7 @@ export default function ManageAttendanceView() {
                             {Array.from({ length: daysInMonth }).map((_, dIdx) => {
                               const dNum = dIdx + 1;
                               const dateStr = `${reportYear}-${String(reportMonth + 1).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
-                              const dateObj = new Date(dateStr);
+                              const dateObj = new Date(reportYear, reportMonth, dNum);
                               const dayName = dateObj.toLocaleDateString(undefined, { weekday: 'short' });
                               const dayRecs = tRecs.filter((r) => r.date === dateStr);
                               const isPast = dateObj <= today;
