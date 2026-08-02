@@ -132,19 +132,38 @@ export const AttendanceService = {
       const data = await apiCall({ action: 'getTeachers' }, 5000);
       if (data && Array.isArray(data.teachers) && data.teachers.length > 0) {
         // Normalize
-        teachers = data.teachers.map((t: any) => ({
-          id: String(t.id || t.name),
-          name: String(t.name || t.id),
-          subject: t.subject || '',
-          pin: t.pin || '',
-        }));
+        teachers = data.teachers.map((t: any) => {
+          const rawPin = t.pin ?? t.PIN ?? t.Pin ?? t.pincode ?? t.PinCode ?? t.passcode ?? t.Passcode ?? t.code ?? '';
+          return {
+            id: String(t.id || t.ID || t.name || t.Name),
+            name: String(t.name || t.Name || t.id || t.ID),
+            subject: t.subject || t.Subject || '',
+            pin: String(rawPin).trim(),
+          };
+        });
       }
     } catch (e) {
       console.info('Fetching teachers from persistent app storage');
     }
 
-    if (teachers.length === 0) {
-      teachers = await StorageService.loadKey<AttendanceTeacher[]>('teachers', []);
+    const storedTeachers = await StorageService.loadKey<AttendanceTeacher[]>('teachers', []);
+
+    if (teachers.length > 0) {
+      // Preserve any previously stored PIN if remote returned empty PIN
+      teachers = teachers.map((t) => {
+        if (!t.pin || t.pin.trim() === '') {
+          const stored = storedTeachers.find(
+            (s) => s.id === t.id || s.name.toLowerCase() === t.name.toLowerCase()
+          );
+          if (stored && stored.pin) {
+            return { ...t, pin: stored.pin };
+          }
+        }
+        return t;
+      });
+      await StorageService.saveKey('teachers', teachers);
+    } else {
+      teachers = storedTeachers;
     }
 
     if (teachers.length === 0) {
@@ -152,7 +171,7 @@ export const AttendanceService = {
       await StorageService.saveKey('teachers', teachers);
     }
 
-    // Ensure every teacher has a 4-digit PIN
+    // Ensure every teacher has a valid PIN fallback if still missing
     let pinUpdated = false;
     teachers = teachers.map((t, idx) => {
       if (!t.pin || t.pin.trim() === '') {
@@ -224,50 +243,73 @@ export const AttendanceService = {
     date: string;
     time: string;
   }> {
+    const cleanPin = (pin || '').trim();
     const mKey = date.slice(0, 7);
     const storageKey = `attendance_recs_${mKey}`;
 
+    const teachers = await this.getTeachers();
+
     // Try remote scan first
     try {
-      const remoteRes = await apiCall({ action: 'scan', pin, date, time }, 5000);
-      if (remoteRes && remoteRes.recordId) {
+      const remoteRes = await apiCall({ action: 'scan', pin: cleanPin, date, time }, 5000);
+      if (remoteRes && (remoteRes.recordId || remoteRes.teacher || remoteRes.success)) {
+        const matchedT = teachers.find(
+          (t) => (t.pin && t.pin.trim() === cleanPin) ||
+                 t.id === cleanPin ||
+                 t.name.toLowerCase() === (remoteRes.teacher || '').toLowerCase() ||
+                 t.id === remoteRes.teacher
+        );
+
+        const teacherId = matchedT ? matchedT.id : (remoteRes.teacher || `T_${cleanPin}`);
+        const teacherName = matchedT ? matchedT.name : (remoteRes.teacher || 'Teacher');
+        const recordId = remoteRes.recordId || `REC_${teacherId}_${date.replace(/-/g, '')}`;
+
         // Sync with StorageService
         const records = await StorageService.loadKey<AttendanceRecord[]>(storageKey, []);
-        const recIdx = records.findIndex((r) => r.id === remoteRes.recordId);
+        const recIdx = records.findIndex((r) => r.id === recordId || (r.teacherId === teacherId && r.date === date && !r.checkOut));
+        
         if (recIdx >= 0) {
           records[recIdx] = {
             ...records[recIdx],
-            checkOut: remoteRes.action === 'checkOut' ? time : records[recIdx].checkOut,
+            checkOut: remoteRes.action === 'checkOut' ? time : (records[recIdx].checkOut || time),
           };
         } else {
           records.push({
-            id: remoteRes.recordId,
-            teacherId: remoteRes.teacher,
-            date: remoteRes.date,
+            id: recordId,
+            teacherId: teacherId,
+            date: remoteRes.date || date,
             checkIn: time,
-            checkOut: '',
+            checkOut: remoteRes.action === 'checkOut' ? time : '',
           });
         }
         await StorageService.saveKey(storageKey, records);
-        return remoteRes;
+
+        return {
+          action: remoteRes.action || 'checkIn',
+          recordId: recordId,
+          teacher: teacherName,
+          date,
+          time,
+        };
       }
     } catch (err: any) {
       console.info('Remote scan offline fallback:', err.message);
     }
 
-    // Local scan engine if remote unavailable
-    const teachers = await StorageService.loadKey<AttendanceTeacher[]>('teachers', []);
+    // Local scan engine if remote unavailable or failed
     const matchedTeacher = teachers.find(
-      (t) => t.pin === pin || t.id === pin || t.name.toLowerCase() === pin.toLowerCase()
+      (t) => (t.pin && t.pin.trim() === cleanPin) ||
+             t.id === cleanPin ||
+             t.name.toLowerCase() === cleanPin.toLowerCase()
     );
 
     if (!matchedTeacher) {
-      throw new Error('Invalid PIN code. Please check and try again.');
+      throw new Error('Invalid PIN code. Please check your PIN and try again.');
     }
 
     const records = await StorageService.loadKey<AttendanceRecord[]>(storageKey, []);
     const openRecord = records.find(
-      (r) => (r.teacherId === matchedTeacher.id || r.teacherId === matchedTeacher.name) &&
+      (r) => (r.teacherId === matchedTeacher.id || r.teacherId === matchedTeacher.name || r.teacherId.toLowerCase() === matchedTeacher.name.toLowerCase()) &&
              r.date === date &&
              !r.checkOut
     );

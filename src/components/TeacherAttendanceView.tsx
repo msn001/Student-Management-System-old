@@ -286,9 +286,15 @@ export default function TeacherAttendanceView() {
     try {
       const res = await AttendanceService.scan(pin, dateStr, timeStr);
       
-      if (res.action === 'checkIn') {
-        const teacherId = findTeacherIdByName(res.teacher, teachers);
+      // Match teacher by ID or Name or PIN
+      const matchedT = teachers.find(
+        (t) => t.name.toLowerCase() === res.teacher.toLowerCase() ||
+               t.id === res.teacher ||
+               (t.pin && t.pin.trim() === pin.trim())
+      );
+      const teacherId = matchedT ? matchedT.id : res.teacher;
 
+      if (res.action === 'checkIn') {
         // Add to active today records list
         const newRecord: AttendanceRecord = {
           id: res.recordId,
@@ -297,7 +303,10 @@ export default function TeacherAttendanceView() {
           checkIn: res.time,
           checkOut: '',
         };
-        setTodayRecords((prev) => [...prev, newRecord]);
+        setTodayRecords((prev) => {
+          const filtered = prev.filter((r) => r.id !== res.recordId);
+          return [...filtered, newRecord];
+        });
 
         setScanResult({
           type: 'in',
@@ -309,7 +318,11 @@ export default function TeacherAttendanceView() {
       } else {
         // Update check-out in records list
         setTodayRecords((prev) =>
-          prev.map((r) => (r.id === res.recordId ? { ...r, checkOut: res.time } : r))
+          prev.map((r) =>
+            r.id === res.recordId || (r.teacherId === teacherId && r.date === res.date && !r.checkOut)
+              ? { ...r, checkOut: res.time }
+              : r
+          )
         );
         const overnight = res.date !== dateStr;
         setScanResult({
@@ -320,6 +333,9 @@ export default function TeacherAttendanceView() {
           status: 'Checked out' + (overnight ? ' (overnight shift)' : ''),
         });
       }
+
+      // Immediately sync live data to update active tables and report stats
+      syncLiveData();
 
       setPinBuffer('');
       setTimeout(() => {
