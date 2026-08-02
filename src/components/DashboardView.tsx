@@ -452,10 +452,10 @@ export default function DashboardView({
       </div>
 
       {/* Main Grid for Teacher Availability + Main content */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        {/* Left Column: Teacher Availability Widget */}
-        <div className="lg:col-span-1 space-y-6 no-print">
+        {/* Left Column: Teacher Availability Widget (Sticky on Scroll & Wider) */}
+        <div className="lg:col-span-4 space-y-6 no-print sticky top-4 self-start max-h-[calc(100vh-4rem)] overflow-y-auto pr-1">
           <div className="bg-white rounded-xl border-2 border-slate-200/80 p-4 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
               <h3 className="font-bold text-xs uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
@@ -594,7 +594,7 @@ export default function DashboardView({
         </div>
 
         {/* Right Column: Main Dashboard Content */}
-        <div className="lg:col-span-3 space-y-6">
+        <div className="lg:col-span-8 space-y-6">
           {/* Admin Reminders Banner (Admin Only) */}
           <AdminRemindersDashboardBanner
             isUnlocked={isUnlocked}

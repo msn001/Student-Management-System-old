@@ -516,7 +516,7 @@ export default function App() {
 
         {/* Left Sidebar - Desktop & Mobile Drawer */}
         <aside className={`
-          fixed md:sticky top-0 left-0 h-screen w-64 bg-slate-900 text-white shrink-0 border-r border-slate-800 flex flex-col z-50 transition-transform duration-300 no-print
+          fixed md:sticky top-0 left-0 h-screen w-72 bg-slate-900 text-white shrink-0 border-r border-slate-800 flex flex-col z-50 transition-transform duration-300 no-print
           ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         `}>
           <div className="p-6 border-b border-slate-800 flex items-center gap-3">
@@ -583,9 +583,46 @@ export default function App() {
             })}
           </nav>
 
-          {/* Sidebar Footer with Lock Status */}
-          <div className="p-4 border-t border-slate-800 bg-slate-950/40 space-y-2 shrink-0">
-            <div className="flex items-center justify-between text-xs text-slate-400 px-2">
+          {/* Sidebar Footer with Admin Reminders & Lock Status */}
+          <div className="p-4 border-t border-slate-800 bg-slate-950/40 space-y-3 shrink-0">
+            {/* Admin Reminders Button - Placed BEFORE Admin Locked Status */}
+            <div>
+              {isUnlocked ? (
+                <button
+                  onClick={() => setIsAdminRemindersOpen(true)}
+                  className="w-full py-2 px-3 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-extrabold flex items-center justify-between cursor-pointer transition-all shadow-xs"
+                  title="Manage Admin Reminders & Alerts"
+                >
+                  <div className="flex items-center gap-2">
+                    <Bell size={15} className="text-amber-400 animate-bounce" />
+                    <span>Admin Reminders</span>
+                  </div>
+                  <span className="bg-amber-400 text-slate-900 text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider">
+                    Manage
+                  </span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    setPendingTab(null);
+                    setPinInput('');
+                    setPinError('');
+                    setShowUnlockModal(true);
+                  }}
+                  className="w-full py-2 px-3 bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-700/60 rounded-xl text-xs font-bold flex items-center justify-between cursor-pointer transition-colors"
+                  title="Unlock Admin PIN to manage reminders"
+                >
+                  <div className="flex items-center gap-2">
+                    <Bell size={15} className="text-slate-500" />
+                    <span>Admin Reminders</span>
+                  </div>
+                  <Lock size={12} className="text-slate-500" />
+                </button>
+              )}
+            </div>
+
+            {/* Lock Status Bar */}
+            <div className="flex items-center justify-between text-xs text-slate-400 px-1 pt-1 border-t border-slate-800/60">
               <span className="flex items-center gap-1.5 font-mono text-[10px]">
                 {isUnlocked ? (
                   <>
@@ -601,17 +638,6 @@ export default function App() {
               </span>
               
               <div className="flex gap-2 items-center">
-                {isUnlocked && (
-                  <button
-                    onClick={() => setIsAdminRemindersOpen(true)}
-                    className="p-1 hover:text-amber-400 text-amber-300 hover:bg-slate-800 rounded transition-colors cursor-pointer flex items-center gap-1 border border-amber-500/30 px-1.5 py-0.5 bg-amber-500/10 text-xs font-extrabold"
-                    title="Admin Reminders & Alerts"
-                  >
-                    <Bell size={12} />
-                    <span>Reminders</span>
-                  </button>
-                )}
-
                 <button 
                   onClick={() => {
                     if (isUnlocked) {
@@ -624,7 +650,7 @@ export default function App() {
                       setShowUnlockModal(true);
                     }
                   }}
-                  className="p-1 hover:text-white text-slate-400 hover:bg-slate-800 rounded transition-colors cursor-pointer flex items-center gap-1 border border-slate-800/60 px-1.5 py-0.5 bg-slate-900/40"
+                  className="p-1 hover:text-white text-slate-400 hover:bg-slate-800 rounded transition-colors cursor-pointer flex items-center gap-1 border border-slate-800/60 px-1.5 py-0.5 bg-slate-900/40 text-[11px]"
                   title="Branding & Admin Settings (School Logo, PIN)"
                 >
                   <Settings size={13} />
