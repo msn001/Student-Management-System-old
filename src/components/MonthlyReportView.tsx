@@ -7,8 +7,9 @@ interface MonthlyReportViewProps {
   students: Student[];
   teachers: Teacher[];
   slots: ClassSlot[];
-  logsByMonth: Record<string, Record<string, LessonEntry>>;
-  subsByMonth: Record<string, Record<string, string>>;
+  logsByMonth: Record<string, Record<string, Record<string, LessonEntry>>>;
+  subsByMonth: Record<string, Record<string, Record<string, string>>>;
+  onLoadMonthBuffer?: (mKey: string) => Promise<void> | void;
   schoolLogo?: string;
 }
 
@@ -32,6 +33,7 @@ export default function MonthlyReportView({
   slots,
   logsByMonth,
   subsByMonth,
+  onLoadMonthBuffer,
   schoolLogo,
 }: MonthlyReportViewProps) {
   const [selectedStudentId, setSelectedStudentId] = useState('');
@@ -53,8 +55,60 @@ export default function MonthlyReportView({
 
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    
+    // Check if current month has any recorded logs in logsByMonth
+    const currentLogs = logsByMonth[currentKey] || {};
+    const hasCurrentLogs = Object.values(currentLogs).some((slotObj) =>
+      Object.keys(slotObj || {}).length > 0
+    );
+
+    if (!hasCurrentLogs) {
+      // Find latest month with recorded data
+      const keysWithData = Object.keys(logsByMonth)
+        .filter((k) => {
+          const mLog = logsByMonth[k] || {};
+          return Object.values(mLog).some((slotObj) => Object.keys(slotObj || {}).length > 0);
+        })
+        .sort()
+        .reverse();
+
+      if (keysWithData.length > 0) {
+        return keysWithData[0];
+      }
+    }
+    return currentKey;
   });
+
+  // Automatically request buffer load whenever selectedMonth changes
+  useEffect(() => {
+    if (onLoadMonthBuffer && selectedMonth) {
+      onLoadMonthBuffer(selectedMonth);
+    }
+  }, [selectedMonth, onLoadMonthBuffer]);
+
+  // If current month is empty but another loaded month has data, auto-switch to that month
+  useEffect(() => {
+    const currentLogs = logsByMonth[selectedMonth] || {};
+    const hasCurrentLogs = Object.values(currentLogs).some((slotObj) =>
+      Object.keys(slotObj || {}).length > 0
+    );
+
+    if (!hasCurrentLogs) {
+      const keysWithData = Object.keys(logsByMonth)
+        .filter((k) => {
+          const mLog = logsByMonth[k] || {};
+          return Object.values(mLog).some((slotObj) => Object.keys(slotObj || {}).length > 0);
+        })
+        .sort()
+        .reverse();
+
+      if (keysWithData.length > 0 && keysWithData[0] !== selectedMonth) {
+        setSelectedMonth(keysWithData[0]);
+      }
+    }
+  }, [logsByMonth, selectedMonth]);
+
   const [subjectFilterMode, setSubjectFilterMode] = useState('separate');
 
   const getDaysInMonth = (year: number, monthIndex: number) => {

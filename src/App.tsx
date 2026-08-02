@@ -320,14 +320,35 @@ export default function App() {
         setDashDate(schoolDateStr);
         setLogDate(schoolDateStr);
 
-        // Pre-load current and nearby month registers
+        // Pre-load current and nearby month registers (e.g. current month and previous month)
         const mKey = `${schoolDateStr.split('-')[0]}-${schoolDateStr.split('-')[1]}`;
-        const currentMonthLogs = await StorageService.getMonthLogs(mKey);
-        const currentMonthSubs = await StorageService.getMonthSubs(mKey);
+        const parts = mKey.split('-').map(Number);
+        let prevYear = parts[0];
+        let prevMonth = parts[1] - 1;
+        if (prevMonth < 1) {
+          prevMonth = 12;
+          prevYear -= 1;
+        }
+        const prevMKey = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
 
-        setLogsByMonth((prev) => ({ ...prev, [mKey]: currentMonthLogs }));
-        setSubsByMonth((prev) => ({ ...prev, [mKey]: currentMonthSubs }));
-        setActiveMonths([mKey]);
+        const [currentMonthLogs, currentMonthSubs, prevMonthLogs, prevMonthSubs] = await Promise.all([
+          StorageService.getMonthLogs(mKey),
+          StorageService.getMonthSubs(mKey),
+          StorageService.getMonthLogs(prevMKey),
+          StorageService.getMonthSubs(prevMKey),
+        ]);
+
+        setLogsByMonth((prev) => ({
+          ...prev,
+          [mKey]: currentMonthLogs,
+          [prevMKey]: prevMonthLogs,
+        }));
+        setSubsByMonth((prev) => ({
+          ...prev,
+          [mKey]: currentMonthSubs,
+          [prevMKey]: prevMonthSubs,
+        }));
+        setActiveMonths([mKey, prevMKey]);
       } catch (e) {
         console.error('Error bootstrapping application data', e);
       } finally {
@@ -776,6 +797,7 @@ export default function App() {
                   slots={slots}
                   logsByMonth={logsByMonth}
                   subsByMonth={subsByMonth}
+                  onLoadMonthBuffer={handleLoadMonthBuffer}
                   schoolLogo={schoolLogo}
                 />
               )}
