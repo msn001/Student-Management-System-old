@@ -290,14 +290,22 @@ export default function ManageAttendanceView() {
     setEditLoading(true);
     setEditError('');
     try {
-      await AttendanceService.editRecord(editingRecord.id, editCheckIn, editCheckOut);
+      await AttendanceService.editRecord(
+        editingRecord.id,
+        editCheckIn,
+        editCheckOut,
+        editingRecord.teacherId,
+        editingRecord.date
+      );
       
       // Update local report list state
       setReportRecords((prev) => {
-        const exists = prev.some((r) => r.id === editingRecord.id);
+        const exists = prev.some((r) => r.id === editingRecord.id || (r.teacherId === editingRecord.teacherId && r.date === editingRecord.date));
         if (exists) {
           return prev.map((r) =>
-            r.id === editingRecord.id ? { ...r, checkIn: editCheckIn, checkOut: editCheckOut } : r
+            (r.id === editingRecord.id || (r.teacherId === editingRecord.teacherId && r.date === editingRecord.date))
+              ? { ...r, id: editingRecord.id, checkIn: editCheckIn, checkOut: editCheckOut, teacherId: editingRecord.teacherId, date: editingRecord.date }
+              : r
           );
         } else {
           return [
@@ -330,11 +338,8 @@ export default function ManageAttendanceView() {
     setEditLoading(true);
     setEditError('');
     try {
-      const existsInList = reportRecords.some((r) => r.id === editingRecord.id);
-      if (existsInList) {
-        await AttendanceService.deleteRecord(editingRecord.id).catch(() => {});
-        setReportRecords((prev) => prev.filter((r) => r.id !== editingRecord.id));
-      }
+      await AttendanceService.deleteRecord(editingRecord.id, editingRecord.teacherId, editingRecord.date);
+      setReportRecords((prev) => prev.filter((r) => r.id !== editingRecord.id && !(r.teacherId === editingRecord.teacherId && r.date === editingRecord.date)));
       setEditingRecord(null);
     } catch (err: any) {
       setEditError(err.message || 'Failed to delete attendance record.');

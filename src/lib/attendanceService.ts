@@ -2,6 +2,8 @@
 
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzMBcrZEDAB9_u2pJmLEQlMgTz_566Udq688opiP8G8qPtpBc1rC-z9Ix1homUZJ8cm/exec';
 
+import { StorageService } from './storage';
+
 export interface AttendanceTeacher {
   id: string;
   name: string;
@@ -48,6 +50,7 @@ function saveLocalCachedTeachers(teachers: AttendanceTeacher[]) {
   try {
     if (teachers && teachers.length > 0) {
       localStorage.setItem(CACHE_KEYS.TEACHERS, JSON.stringify(teachers));
+      StorageService.saveKey(CACHE_KEYS.TEACHERS, teachers).catch(() => {});
     }
   } catch (e) {
     console.warn('Failed writing teacher cache:', e);
@@ -73,12 +76,31 @@ function saveLocalCachedRecords(records: AttendanceRecord[]) {
   } catch (e) {
     console.warn('Failed writing records cache:', e);
   }
+  try {
+    StorageService.saveKey(CACHE_KEYS.RECORDS, records).catch(() => {});
+  } catch (e) {
+    // Ignore async storage save errors
+  }
 }
 
 function mergeRecords(existing: AttendanceRecord[], incoming: AttendanceRecord[]): AttendanceRecord[] {
   const map = new Map<string, AttendanceRecord>();
-  existing.forEach((r) => map.set(r.id, r));
+  // 1. Load incoming from remote server
   incoming.forEach((r) => map.set(r.id, r));
+  // 2. Overlay existing local records so local edits/additions take priority over stale server data
+  existing.forEach((r) => {
+    const serverRec = map.get(r.id);
+    if (!serverRec) {
+      map.set(r.id, r);
+    } else {
+      map.set(r.id, {
+        ...serverRec,
+        ...r,
+        checkIn: r.checkIn || serverRec.checkIn,
+        checkOut: r.checkOut || serverRec.checkOut,
+      });
+    }
+  });
   return Array.from(map.values());
 }
 
@@ -144,10 +166,22 @@ export const AttendanceService = {
   },
 
   async getRecords(month: string): Promise<AttendanceRecord[]> {
+    let cached = getLocalCachedRecords();
+    if (cached.length === 0) {
+      try {
+        const cloudRecords = await StorageService.loadKey<AttendanceRecord[]>(CACHE_KEYS.RECORDS, []);
+        if (Array.isArray(cloudRecords) && cloudRecords.length > 0) {
+          cached = cloudRecords;
+          localStorage.setItem(CACHE_KEYS.RECORDS, JSON.stringify(cached));
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
     try {
       const data = await apiCall({ action: 'getRecords', month }, 5000, 1);
       if (data && Array.isArray(data.records)) {
-        const cached = getLocalCachedRecords();
         const merged = mergeRecords(cached, data.records);
         saveLocalCachedRecords(merged);
         return merged.filter((r) => r.date.startsWith(month));
@@ -155,7 +189,7 @@ export const AttendanceService = {
     } catch (e) {
       console.info(`Using local cached records for ${month} due to network/server delay`);
     }
-    const cached = getLocalCachedRecords();
+
     return cached.filter((r) => r.date.startsWith(month));
   },
 
@@ -267,25 +301,51 @@ export const AttendanceService = {
     apiCall({ action: 'removeTeacher', id }, 6000, 0).catch((e) => console.warn('Background removeTeacher sync notice:', e));
   },
 
-  async editRecord(recordId: string, checkIn: string, checkOut: string): Promise<void> {
+  async editRecord(
+    recordId: string,
+    checkIn: string,
+    checkOut: string,
+    teacherId?: string,
+    date?: string
+  ): Promise<void> {
     const cached = getLocalCachedRecords();
-    const idx = cached.findIndex((r) => r.id === recordId);
+    const idx = cached.findIndex(
+      (r) => r.id === recordId || (teacherId && date && r.teacherId === teacherId && r.date === date)
+    );
+
     if (idx >= 0) {
-      cached[idx].checkIn = checkIn;
-      cached[idx].checkOut = checkOut;
-      saveLocalCachedRecords(cached);
+      cached[idx] = {
+        ...cached[idx],
+        id: recordId,
+        checkIn,
+        checkOut,
+        ...(teacherId ? { teacherId } : {}),
+        ...(date ? { date } : {}),
+      };
+    } else {
+      cached.push({
+        id: recordId,
+        teacherId: teacherId || 'unknown',
+        date: date || new Date().toISOString().split('T')[0],
+        checkIn,
+        checkOut,
+      });
     }
 
-    // Sync in background
-    apiCall({ action: 'editRecord', recordId, checkIn, checkOut }, 6000, 0).catch((e) => console.warn('Background editRecord sync notice:', e));
-  },
-
-  async deleteRecord(recordId: string): Promise<void> {
-    const cached = getLocalCachedRecords().filter((r) => r.id !== recordId);
     saveLocalCachedRecords(cached);
 
     // Sync in background
-    apiCall({ action: 'deleteRecord', recordId }, 6000, 0).catch((e) => console.warn('Background deleteRecord sync notice:', e));
+    apiCall({ action: 'editRecord', recordId, checkIn, checkOut, teacherId: teacherId || '', date: date || '' }, 6000, 0).catch((e) => console.warn('Background editRecord sync notice:', e));
+  },
+
+  async deleteRecord(recordId: string, teacherId?: string, date?: string): Promise<void> {
+    const cached = getLocalCachedRecords().filter(
+      (r) => r.id !== recordId && !(teacherId && date && r.teacherId === teacherId && r.date === date)
+    );
+    saveLocalCachedRecords(cached);
+
+    // Sync in background
+    apiCall({ action: 'deleteRecord', recordId, teacherId: teacherId || '', date: date || '' }, 6000, 0).catch((e) => console.warn('Background deleteRecord sync notice:', e));
   }
 };
 

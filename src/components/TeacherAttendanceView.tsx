@@ -261,8 +261,6 @@ export default function TeacherAttendanceView() {
       
       if (res.action === 'checkIn') {
         const teacherId = findTeacherIdByName(res.teacher, teachers);
-        const expectedTime = getTeacherExpectedTime(teacherId);
-        const punct = checkArrivalPunctuality(res.time, expectedTime);
 
         // Add to active today records list
         const newRecord: AttendanceRecord = {
@@ -274,16 +272,12 @@ export default function TeacherAttendanceView() {
         };
         setTodayRecords((prev) => [...prev, newRecord]);
 
-        const statusMsg = punct.isLate
-          ? `Checked in • LATE by ${punct.lateMins}m (Target: ${formatTimeToAMPM(expectedTime)})`
-          : `Checked in • ON TIME (Target: ${formatTimeToAMPM(expectedTime)})`;
-
         setScanResult({
           type: 'in',
-          icon: punct.isLate ? '⚠️' : '✅',
+          icon: '✅',
           name: res.teacher,
           time: res.time,
-          status: statusMsg,
+          status: `Checked in at ${formatTimeToAMPM(res.time)}`,
         });
       } else {
         // Update check-out in records list
@@ -572,9 +566,6 @@ export default function TeacherAttendanceView() {
                     .map((rec) => {
                       const teacher = teachers.find((t) => t.id === rec.teacherId || t.name === rec.teacherId);
                       const isComplete = !!rec.checkOut;
-                      const teacherId = teacher ? teacher.id : rec.teacherId;
-                      const expectedTime = getTeacherExpectedTime(teacherId);
-                      const punct = checkArrivalPunctuality(rec.checkIn, expectedTime);
 
                       return (
                         <div
