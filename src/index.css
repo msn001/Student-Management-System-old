@@ -97,15 +97,15 @@ input:focus, select:focus, textarea:focus {
   }
   
   /* Make sure flex layouts are display block and allow overflow when printing */
-  .flex,
-  .flex-col,
-  .min-h-screen,
-  .overflow-hidden,
-  .overflow-y-auto,
-  div[class*="min-h-screen"]:not(.no-print),
-  div[class*="overflow-hidden"]:not(.no-print),
-  div[class*="bg-slate-900"]:not(.no-print),
-  div[class*="bg-slate-50"]:not(.no-print) {
+  .flex:not(.no-print):not(.print\:hidden),
+  .flex-col:not(.no-print):not(.print\:hidden),
+  .min-h-screen:not(.no-print):not(.print\:hidden),
+  .overflow-hidden:not(.no-print):not(.print\:hidden),
+  .overflow-y-auto:not(.no-print):not(.print\:hidden),
+  div[class*="min-h-screen"]:not(.no-print):not(.print\:hidden),
+  div[class*="overflow-hidden"]:not(.no-print):not(.print\:hidden),
+  div[class*="bg-slate-900"]:not(.no-print):not(.print\:hidden),
+  div[class*="bg-slate-50"]:not(.no-print):not(.print\:hidden) {
     display: block !important;
     height: auto !important;
     min-height: auto !important;
@@ -118,6 +118,9 @@ input:focus, select:focus, textarea:focus {
 
   /* Hide UI elements, navigation tabs, sidebar and filters during print */
   .no-print,
+  .print\:hidden,
+  [class*="print:hidden"],
+  [class*="no-print"],
   div.no-print,
   aside.no-print,
   header.no-print,
@@ -135,6 +138,44 @@ input:focus, select:focus, textarea:focus {
   aside,
   header {
     display: none !important;
+  }
+
+  /* Teacher & Student Timetable specific isolated print mode */
+  body.printing-teacher-timetable #root > div > *:not(#teacherPrintArea) {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  body.printing-teacher-timetable #teacherPrintArea {
+    display: block !important;
+    visibility: visible !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.printing-teacher-timetable #teacherPrintArea * {
+    visibility: visible !important;
+  }
+
+  body.printing-teacher-timetable #teacherPrintArea table {
+    display: table !important;
+    width: 100% !important;
+  }
+  body.printing-teacher-timetable #teacherPrintArea thead {
+    display: table-header-group !important;
+  }
+  body.printing-teacher-timetable #teacherPrintArea tbody {
+    display: table-row-group !important;
+  }
+  body.printing-teacher-timetable #teacherPrintArea tr {
+    display: table-row !important;
+    page-break-inside: avoid !important;
+  }
+  body.printing-teacher-timetable #teacherPrintArea td,
+  body.printing-teacher-timetable #teacherPrintArea th {
+    display: table-cell !important;
   }
 
   main {
