@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "attendance_records": {
+      "title": "Attendance Records",
+      "description": "Daily teacher attendance records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "date": { "type": "string" },
+        "checkIn": { "type": "string" },
+        "checkOut": { "type": "string" },
+        "status": { "type": "string" },
+        "lateMinutes": { "type": "number" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["teacherId", "date"]
+    },
+    "attendance_teachers": {
+      "title": "Attendance Teachers",
+      "description": "Teacher profiles with PIN and expected check-in time",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "pin": { "type": "string" },
+        "expectedTime": { "type": "string" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["name"]
+    },
+    "attendance_settings": {
+      "title": "Attendance Settings",
+      "description": "School location coordinates and geofence settings",
+      "type": "object",
+      "properties": {
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "maxDistanceMeters": { "type": "number" },
+        "defaultExpectedTime": { "type": "string" }
+      }
+    }
+  }
+}
