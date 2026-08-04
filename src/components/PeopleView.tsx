@@ -10,6 +10,7 @@ interface PeopleViewProps {
   onUpdateTeachers: (teachers: Teacher[]) => void;
   onUpdateStudents: (students: Student[]) => void;
   onDownloadTimetable: (teacherId: string) => void;
+  onDownloadStudentTimetable?: (studentId: string) => void;
   onOpenRestoreModal?: () => void;
 }
 
@@ -20,6 +21,7 @@ export default function PeopleView({
   onUpdateTeachers,
   onUpdateStudents,
   onDownloadTimetable,
+  onDownloadStudentTimetable,
   onOpenRestoreModal,
 }: PeopleViewProps) {
   const [newTeacherName, setNewTeacherName] = useState('');
@@ -419,7 +421,16 @@ export default function PeopleView({
                         <div className="font-semibold text-[var(--ink)]">{s.name}</div>
                         <div className="text-xs text-[var(--ink-soft)]">{classCount} weekly class{classCount === 1 ? '' : 'es'}</div>
                       </div>
-                      <div className="flex gap-1">
+                      <div className="flex gap-1.5 flex-wrap items-center">
+                        {onDownloadStudentTimetable && (
+                          <button
+                            onClick={() => onDownloadStudentTimetable(s.id)}
+                            className="px-2 py-1 text-xs border border-[var(--line-strong)] rounded hover:bg-slate-50 flex items-center gap-1 cursor-pointer"
+                            title="Download Timetable"
+                          >
+                            <Download size={12} /> Timetable
+                          </button>
+                        )}
                         <button
                           onClick={() => handleStartEditStudent(s)}
                           className="p-1.5 text-[var(--ink-soft)] hover:text-[var(--ink)] hover:bg-slate-50 rounded cursor-pointer"
