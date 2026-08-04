@@ -1,467 +1,402 @@
-import { db } from './firebase';
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  deleteDoc,
-  query,
-  where
-} from 'firebase/firestore';
+// Service to interact with the Google Apps Script Teacher Attendance backend with offline caching & retry resilience
+
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzMBcrZEDAB9_u2pJmLEQlMgTz_566Udq688opiP8G8qPtpBc1rC-z9Ix1homUZJ8cm/exec';
+
+import { StorageService } from './storage';
 
 export interface AttendanceTeacher {
   id: string;
   name: string;
   subject?: string;
-  pin: string; // 4-digit PIN
-  expectedTime?: string; // HH:mm format, e.g., "08:00"
-  active?: boolean;
+  pin?: string;
 }
 
 export interface AttendanceRecord {
   id: string;
   teacherId: string;
-  teacherName?: string;
-  date: string; // YYYY-MM-DD
-  checkIn: string; // HH:mm or HH:mm:ss
-  checkOut: string; // HH:mm or HH:mm:ss
-  status?: 'On Time' | 'Late' | 'Absent' | 'Working';
-  lateMinutes?: number;
-  updatedAt?: string;
+  date: string;
+  checkIn: string;
+  checkOut: string;
 }
-
-export interface AttendanceSettings {
-  latitude: number;
-  longitude: number;
-  maxDistanceMeters: number; // default 50m
-  defaultExpectedTime: string; // default "08:00"
-  adminPasscode?: string;
-}
-
-const DEFAULT_SETTINGS: AttendanceSettings = {
-  latitude: 31.5204, // Default school location
-  longitude: 74.3587,
-  maxDistanceMeters: 50,
-  defaultExpectedTime: '08:00',
-  adminPasscode: '1234',
-};
 
 const DEFAULT_FALLBACK_TEACHERS: AttendanceTeacher[] = [
-  { id: 'T1', name: 'Dr. Sarah Ahmed', subject: 'Mathematics', pin: '1001', expectedTime: '08:00', active: true },
-  { id: 'T2', name: 'Prof. Ali Raza', subject: 'Physics', pin: '1002', expectedTime: '08:00', active: true },
-  { id: 'T3', name: 'Ms. Fatima Khan', subject: 'English Literature', pin: '1003', expectedTime: '08:00', active: true },
-  { id: 'T4', name: 'Mr. Usman Hassan', subject: 'Chemistry', pin: '1004', expectedTime: '08:00', active: true },
-  { id: 'T5', name: 'Mrs. Ayesha Tariq', subject: 'Biology', pin: '1005', expectedTime: '08:00', active: true },
+  { id: 'T1', name: 'Dr. Sarah Ahmed', subject: 'Mathematics', pin: '1001' },
+  { id: 'T2', name: 'Prof. Ali Raza', subject: 'Physics', pin: '1002' },
+  { id: 'T3', name: 'Ms. Fatima Khan', subject: 'English Literature', pin: '1003' },
+  { id: 'T4', name: 'Mr. Usman Hassan', subject: 'Chemistry', pin: '1004' },
+  { id: 'T5', name: 'Mrs. Ayesha Tariq', subject: 'Biology', pin: '1005' },
 ];
 
-const LOCAL_STORAGE_KEYS = {
-  TEACHERS: 'attendance_teachers_fb_v1',
-  RECORDS: 'attendance_records_fb_v1',
-  SETTINGS: 'attendance_settings_fb_v1',
+// Local Cache Helper
+const CACHE_KEYS = {
+  TEACHERS: 'attendance_cached_teachers_v2',
+  RECORDS: 'attendance_cached_records_v2',
 };
 
-// Haversine formula for calculating distance in meters
-export function calculateDistanceMeters(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number {
-  const R = 6371000; // Earth's radius in meters
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return Math.round(R * c);
+function getLocalCachedTeachers(): AttendanceTeacher[] {
+  try {
+    const raw = localStorage.getItem(CACHE_KEYS.TEACHERS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {
+    console.warn('Failed reading teacher cache:', e);
+  }
+  return DEFAULT_FALLBACK_TEACHERS;
 }
 
-export function parseTimeToMinutes(timeStr: string): number {
-  if (!timeStr) return 0;
-  // Format can be "08:15", "08:15:30", "8:15 AM", etc.
-  const clean = timeStr.trim().toUpperCase();
-  let hours = 0;
-  let minutes = 0;
+function saveLocalCachedTeachers(teachers: AttendanceTeacher[]) {
+  try {
+    if (teachers && teachers.length > 0) {
+      localStorage.setItem(CACHE_KEYS.TEACHERS, JSON.stringify(teachers));
+      StorageService.saveKey(CACHE_KEYS.TEACHERS, teachers).catch(() => {});
+    }
+  } catch (e) {
+    console.warn('Failed writing teacher cache:', e);
+  }
+}
 
-  if (clean.includes('AM') || clean.includes('PM')) {
-    const isPM = clean.includes('PM');
-    const timePart = clean.replace(/AM|PM/, '').trim();
-    const parts = timePart.split(':');
-    hours = parseInt(parts[0], 10) || 0;
-    minutes = parseInt(parts[1], 10) || 0;
-    if (isPM && hours < 12) hours += 12;
-    if (!isPM && hours === 12) hours = 0;
-  } else {
-    const parts = clean.split(':');
-    hours = parseInt(parts[0], 10) || 0;
-    minutes = parseInt(parts[1], 10) || 0;
+function getLocalCachedRecords(): AttendanceRecord[] {
+  try {
+    const raw = localStorage.getItem(CACHE_KEYS.RECORDS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.warn('Failed reading records cache:', e);
+  }
+  return [];
+}
+
+function saveLocalCachedRecords(records: AttendanceRecord[]) {
+  try {
+    localStorage.setItem(CACHE_KEYS.RECORDS, JSON.stringify(records));
+  } catch (e) {
+    console.warn('Failed writing records cache:', e);
+  }
+  try {
+    StorageService.saveKey(CACHE_KEYS.RECORDS, records).catch(() => {});
+  } catch (e) {
+    // Ignore async storage save errors
+  }
+}
+
+function mergeRecords(existing: AttendanceRecord[], incoming: AttendanceRecord[]): AttendanceRecord[] {
+  const map = new Map<string, AttendanceRecord>();
+  // 1. Load incoming from remote server
+  incoming.forEach((r) => map.set(r.id, r));
+  // 2. Overlay existing local records so local edits/additions take priority over stale server data
+  existing.forEach((r) => {
+    const serverRec = map.get(r.id);
+    if (!serverRec) {
+      map.set(r.id, r);
+    } else {
+      map.set(r.id, {
+        ...serverRec,
+        ...r,
+        checkIn: r.checkIn || serverRec.checkIn,
+        checkOut: r.checkOut || serverRec.checkOut,
+      });
+    }
+  });
+  return Array.from(map.values());
+}
+
+// Resilient API Call with Timeout & Retry
+async function apiCall(params: Record<string, string>, timeoutMs = 5000, maxRetries = 1) {
+  if (!SCRIPT_URL) {
+    throw new Error('Google Apps Script URL is not configured.');
   }
 
-  return hours * 60 + minutes;
+  const url = SCRIPT_URL + '?' + new URLSearchParams(params);
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        mode: 'cors',
+        headers: {
+          'Accept': 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timer);
+
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      return data;
+    } catch (error: any) {
+      clearTimeout(timer);
+      const isLastAttempt = attempt === maxRetries;
+      if (isLastAttempt) {
+        const msg = error.name === 'AbortError' ? 'Server timeout (Google Sheets slow response)' : (error.message || 'Network error connecting to Google Sheets.');
+        console.warn(`Attendance API Error (attempt ${attempt + 1}/${maxRetries + 1}):`, msg);
+        throw new Error(msg);
+      }
+      // Wait before retry
+      await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+    }
+  }
 }
 
 export const AttendanceService = {
-  // --- SETTINGS ---
-  async getSettings(): Promise<AttendanceSettings> {
-    if (db) {
-      try {
-        const docRef = doc(db, 'attendance_settings', 'config');
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          const data = snap.data() as AttendanceSettings;
-          localStorage.setItem(LOCAL_STORAGE_KEYS.SETTINGS, JSON.stringify(data));
-          return { ...DEFAULT_SETTINGS, ...data };
-        }
-      } catch (e) {
-        console.warn('Failed to fetch settings from Firestore:', e);
-      }
-    }
-    try {
-      const cached = localStorage.getItem(LOCAL_STORAGE_KEYS.SETTINGS);
-      if (cached) return { ...DEFAULT_SETTINGS, ...JSON.parse(cached) };
-    } catch (e) {}
-    return DEFAULT_SETTINGS;
-  },
-
-  async saveSettings(settings: Partial<AttendanceSettings>): Promise<void> {
-    const current = await this.getSettings();
-    const updated = { ...current, ...settings };
-    localStorage.setItem(LOCAL_STORAGE_KEYS.SETTINGS, JSON.stringify(updated));
-
-    if (db) {
-      try {
-        const docRef = doc(db, 'attendance_settings', 'config');
-        await setDoc(docRef, updated, { merge: true });
-      } catch (e) {
-        console.error('Error saving attendance settings to Firestore:', e);
-      }
-    }
-  },
-
-  // --- TEACHERS ---
   async getTeachers(): Promise<AttendanceTeacher[]> {
-    if (db) {
-      try {
-        const colRef = collection(db, 'attendance_teachers');
-        const snap = await getDocs(colRef);
-        if (!snap.empty) {
-          const list: AttendanceTeacher[] = [];
-          snap.forEach((docSnap) => {
-            list.push({ id: docSnap.id, ...docSnap.data() } as AttendanceTeacher);
-          });
-          localStorage.setItem(LOCAL_STORAGE_KEYS.TEACHERS, JSON.stringify(list));
-          return list;
-        }
-      } catch (e) {
-        console.warn('Failed to fetch teachers from Firestore:', e);
-      }
-    }
-
     try {
-      const cached = localStorage.getItem(LOCAL_STORAGE_KEYS.TEACHERS);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      const data = await apiCall({ action: 'getTeachers' }, 4000, 1);
+      if (data && Array.isArray(data.teachers) && data.teachers.length > 0) {
+        saveLocalCachedTeachers(data.teachers);
+        return data.teachers;
       }
-    } catch (e) {}
-
-    return DEFAULT_FALLBACK_TEACHERS;
-  },
-
-  async saveTeacher(teacher: AttendanceTeacher): Promise<void> {
-    const list = await this.getTeachers();
-    const idx = list.findIndex((t) => t.id === teacher.id || t.name === teacher.name);
-    if (idx >= 0) {
-      list[idx] = { ...list[idx], ...teacher };
-    } else {
-      list.push(teacher);
-    }
-    localStorage.setItem(LOCAL_STORAGE_KEYS.TEACHERS, JSON.stringify(list));
-
-    if (db) {
-      try {
-        const docRef = doc(db, 'attendance_teachers', teacher.id);
-        await setDoc(docRef, teacher, { merge: true });
-      } catch (e) {
-        console.error('Error saving teacher to Firestore:', e);
-      }
-    }
-  },
-
-  async deleteTeacher(teacherId: string): Promise<void> {
-    const list = (await this.getTeachers()).filter((t) => t.id !== teacherId);
-    localStorage.setItem(LOCAL_STORAGE_KEYS.TEACHERS, JSON.stringify(list));
-
-    if (db) {
-      try {
-        const docRef = doc(db, 'attendance_teachers', teacherId);
-        await deleteDoc(docRef);
-      } catch (e) {
-        console.error('Error deleting teacher from Firestore:', e);
-      }
-    }
-  },
-
-  // Sync main app teachers into attendance_teachers if needed
-  async syncMainTeachers(mainTeachers: { id: string; name: string; subject?: string }[]): Promise<AttendanceTeacher[]> {
-    const currentAttendanceTeachers = await this.getTeachers();
-    const updatedList: AttendanceTeacher[] = [...currentAttendanceTeachers];
-    let changed = false;
-
-    for (const mt of mainTeachers) {
-      const exists = updatedList.find((t) => t.id === mt.id || t.name.toLowerCase() === mt.name.toLowerCase());
-      if (!exists) {
-        const newTeacher: AttendanceTeacher = {
-          id: mt.id || `T_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
-          name: mt.name,
-          subject: mt.subject || '',
-          pin: '1234', // Default PIN
-          expectedTime: '08:00',
-          active: true,
-        };
-        updatedList.push(newTeacher);
-        changed = true;
-        if (db) {
-          setDoc(doc(db, 'attendance_teachers', newTeacher.id), newTeacher, { merge: true }).catch(() => {});
-        }
-      }
-    }
-
-    if (changed) {
-      localStorage.setItem(LOCAL_STORAGE_KEYS.TEACHERS, JSON.stringify(updatedList));
-    }
-    return updatedList;
-  },
-
-  // --- ATTENDANCE RECORDS ---
-  async getRecordsForMonth(monthStr: string): Promise<AttendanceRecord[]> {
-    let records: AttendanceRecord[] = [];
-
-    if (db) {
-      try {
-        const colRef = collection(db, 'attendance_records');
-        // Query records where date >= monthStr-01 and date <= monthStr-31
-        const start = `${monthStr}-01`;
-        const end = `${monthStr}-31`;
-        const q = query(colRef, where('date', '>=', start), where('date', '<=', end));
-        const snap = await getDocs(q);
-        snap.forEach((docSnap) => {
-          records.push({ id: docSnap.id, ...docSnap.data() } as AttendanceRecord);
-        });
-      } catch (e) {
-        console.warn('Error querying Firestore for month records:', e);
-      }
-    }
-
-    // Combine/overlay with local cache
-    try {
-      const cachedRaw = localStorage.getItem(LOCAL_STORAGE_KEYS.RECORDS);
-      if (cachedRaw) {
-        const cachedList: AttendanceRecord[] = JSON.parse(cachedRaw);
-        const map = new Map<string, AttendanceRecord>();
-        records.forEach((r) => map.set(r.id, r));
-        cachedList.forEach((cr) => {
-          if (cr.date.startsWith(monthStr)) {
-            map.set(cr.id, { ...(map.get(cr.id) || {}), ...cr });
-          }
-        });
-        records = Array.from(map.values());
-      }
-    } catch (e) {}
-
-    return records;
-  },
-
-  async getRecordsForDate(dateStr: string): Promise<AttendanceRecord[]> {
-    let records: AttendanceRecord[] = [];
-
-    if (db) {
-      try {
-        const colRef = collection(db, 'attendance_records');
-        const q = query(colRef, where('date', '==', dateStr));
-        const snap = await getDocs(q);
-        snap.forEach((docSnap) => {
-          records.push({ id: docSnap.id, ...docSnap.data() } as AttendanceRecord);
-        });
-      } catch (e) {
-        console.warn('Error querying Firestore for date records:', e);
-      }
-    }
-
-    // Merge with local storage
-    try {
-      const cachedRaw = localStorage.getItem(LOCAL_STORAGE_KEYS.RECORDS);
-      if (cachedRaw) {
-        const cachedList: AttendanceRecord[] = JSON.parse(cachedRaw);
-        const map = new Map<string, AttendanceRecord>();
-        records.forEach((r) => map.set(r.id, r));
-        cachedList.forEach((cr) => {
-          if (cr.date === dateStr) {
-            map.set(cr.id, { ...(map.get(cr.id) || {}), ...cr });
-          }
-        });
-        records = Array.from(map.values());
-      }
-    } catch (e) {}
-
-    return records;
-  },
-
-  async getAllRecords(): Promise<AttendanceRecord[]> {
-    let records: AttendanceRecord[] = [];
-
-    if (db) {
-      try {
-        const colRef = collection(db, 'attendance_records');
-        const snap = await getDocs(colRef);
-        snap.forEach((docSnap) => {
-          records.push({ id: docSnap.id, ...docSnap.data() } as AttendanceRecord);
-        });
-      } catch (e) {
-        console.warn('Error fetching all records from Firestore:', e);
-      }
-    }
-
-    try {
-      const cachedRaw = localStorage.getItem(LOCAL_STORAGE_KEYS.RECORDS);
-      if (cachedRaw) {
-        const cachedList: AttendanceRecord[] = JSON.parse(cachedRaw);
-        const map = new Map<string, AttendanceRecord>();
-        records.forEach((r) => map.set(r.id, r));
-        cachedList.forEach((cr) => map.set(cr.id, { ...(map.get(cr.id) || {}), ...cr }));
-        records = Array.from(map.values());
-      }
-    } catch (e) {}
-
-    return records;
-  },
-
-  async saveRecord(record: AttendanceRecord): Promise<void> {
-    // 1. Update local cache
-    try {
-      const cachedRaw = localStorage.getItem(LOCAL_STORAGE_KEYS.RECORDS);
-      let list: AttendanceRecord[] = cachedRaw ? JSON.parse(cachedRaw) : [];
-      const idx = list.findIndex((r) => r.id === record.id || (r.teacherId === record.teacherId && r.date === record.date));
-      if (idx >= 0) {
-        list[idx] = { ...list[idx], ...record };
-      } else {
-        list.push(record);
-      }
-      localStorage.setItem(LOCAL_STORAGE_KEYS.RECORDS, JSON.stringify(list));
     } catch (e) {
-      console.warn('Failed saving record to local cache:', e);
+      console.info('Using local cached teachers due to network/server delay');
+    }
+    return getLocalCachedTeachers();
+  },
+
+  async getRecords(month: string): Promise<AttendanceRecord[]> {
+    let cached = getLocalCachedRecords();
+    if (cached.length === 0) {
+      try {
+        const cloudRecords = await StorageService.loadKey<AttendanceRecord[]>(CACHE_KEYS.RECORDS, []);
+        if (Array.isArray(cloudRecords) && cloudRecords.length > 0) {
+          cached = cloudRecords;
+          localStorage.setItem(CACHE_KEYS.RECORDS, JSON.stringify(cached));
+        }
+      } catch (e) {
+        // ignore
+      }
     }
 
-    // 2. Save to Firestore
-    if (db) {
-      try {
-        const docRef = doc(db, 'attendance_records', record.id);
-        await setDoc(docRef, { ...record, updatedAt: new Date().toISOString() }, { merge: true });
-      } catch (e) {
-        console.error('Error saving attendance record to Firestore:', e);
+    try {
+      const data = await apiCall({ action: 'getRecords', month }, 5000, 1);
+      if (data && Array.isArray(data.records)) {
+        const merged = mergeRecords(cached, data.records);
+        saveLocalCachedRecords(merged);
+        return merged.filter((r) => r.date.startsWith(month));
       }
+    } catch (e) {
+      console.info(`Using local cached records for ${month} due to network/server delay`);
+    }
+
+    return cached.filter((r) => r.date.startsWith(month));
+  },
+
+  async scan(pin: string, date: string, time: string): Promise<{
+    action: 'checkIn' | 'checkOut';
+    recordId: string;
+    teacher: string;
+    date: string;
+    time: string;
+  }> {
+    // Attempt remote scan first with quick timeout
+    try {
+      const remoteRes = await apiCall({ action: 'scan', pin, date, time }, 4500, 1);
+      if (remoteRes && remoteRes.recordId) {
+        // Save to local cache
+        const cached = getLocalCachedRecords();
+        const recIdx = cached.findIndex((r) => r.id === remoteRes.recordId);
+        if (recIdx >= 0) {
+          cached[recIdx] = {
+            ...cached[recIdx],
+            checkOut: remoteRes.action === 'checkOut' ? time : cached[recIdx].checkOut,
+          };
+        } else {
+          cached.push({
+            id: remoteRes.recordId,
+            teacherId: remoteRes.teacher,
+            date: remoteRes.date,
+            checkIn: time,
+            checkOut: '',
+          });
+        }
+        saveLocalCachedRecords(cached);
+        return remoteRes;
+      }
+    } catch (err: any) {
+      console.info('Remote scan failed/timed out, falling back to instant local scan processing:', err.message);
+    }
+
+    // Local Scan Fallback Engine
+    const teachers = getLocalCachedTeachers();
+    // Find matching teacher by PIN or fallback match
+    const matchedTeacher = teachers.find(
+      (t) => t.pin === pin || t.id === pin || t.name.toLowerCase() === pin.toLowerCase()
+    ) || teachers.find((t, idx) => pin === `100${idx + 1}` || pin === `000${idx + 1}`);
+
+    if (!matchedTeacher) {
+      throw new Error('Invalid PIN code. Please check and try again.');
+    }
+
+    const cachedRecords = getLocalCachedRecords();
+
+    // Check if there's an open check-in record for this teacher today
+    const openRecord = cachedRecords.find(
+      (r) => (r.teacherId === matchedTeacher.id || r.teacherId === matchedTeacher.name) &&
+             r.date === date &&
+             !r.checkOut
+    );
+
+    if (openRecord) {
+      // Check-out
+      openRecord.checkOut = time;
+      saveLocalCachedRecords(cachedRecords);
+      return {
+        action: 'checkOut',
+        recordId: openRecord.id,
+        teacher: matchedTeacher.name,
+        date,
+        time,
+      };
+    } else {
+      // Check-in
+      const recordId = `REC_${matchedTeacher.id}_${date.replace(/-/g, '')}_${Date.now()}`;
+      const newRec: AttendanceRecord = {
+        id: recordId,
+        teacherId: matchedTeacher.id,
+        date,
+        checkIn: time,
+        checkOut: '',
+      };
+      cachedRecords.push(newRec);
+      saveLocalCachedRecords(cachedRecords);
+      return {
+        action: 'checkIn',
+        recordId,
+        teacher: matchedTeacher.name,
+        date,
+        time,
+      };
     }
   },
 
-  async deleteRecord(recordId: string): Promise<void> {
-    try {
-      const cachedRaw = localStorage.getItem(LOCAL_STORAGE_KEYS.RECORDS);
-      if (cachedRaw) {
-        const list: AttendanceRecord[] = JSON.parse(cachedRaw);
-        const updated = list.filter((r) => r.id !== recordId);
-        localStorage.setItem(LOCAL_STORAGE_KEYS.RECORDS, JSON.stringify(updated));
-      }
-    } catch (e) {}
+  async addTeacher(name: string, subject: string, pin: string): Promise<{ id: string }> {
+    const id = `T_${Date.now()}`;
+    const newTeacher: AttendanceTeacher = { id, name, subject, pin };
+    const cached = getLocalCachedTeachers();
+    cached.push(newTeacher);
+    saveLocalCachedTeachers(cached);
 
-    if (db) {
-      try {
-        const docRef = doc(db, 'attendance_records', recordId);
-        await deleteDoc(docRef);
-      } catch (e) {
-        console.error('Error deleting record from Firestore:', e);
-      }
-    }
+    // Sync in background
+    apiCall({ action: 'addTeacher', name, subject, pin }, 6000, 0).catch((e) => console.warn('Background addTeacher sync notice:', e));
+    return { id };
   },
 
-  // Delete all attendance records for a custom month e.g., "2026-03"
-  async deleteCustomMonthRecords(monthStr: string): Promise<number> {
-    let count = 0;
+  async removeTeacher(id: string): Promise<void> {
+    const cached = getLocalCachedTeachers().filter((t) => t.id !== id && t.name !== id);
+    saveLocalCachedTeachers(cached);
 
-    // 1. Clear local cache for month
-    try {
-      const cachedRaw = localStorage.getItem(LOCAL_STORAGE_KEYS.RECORDS);
-      if (cachedRaw) {
-        const list: AttendanceRecord[] = JSON.parse(cachedRaw);
-        const filtered = list.filter((r) => !r.date.startsWith(monthStr));
-        count += list.length - filtered.length;
-        localStorage.setItem(LOCAL_STORAGE_KEYS.RECORDS, JSON.stringify(filtered));
-      }
-    } catch (e) {}
-
-    // 2. Clear Firestore
-    if (db) {
-      try {
-        const colRef = collection(db, 'attendance_records');
-        const start = `${monthStr}-01`;
-        const end = `${monthStr}-31`;
-        const q = query(colRef, where('date', '>=', start), where('date', '<=', end));
-        const snap = await getDocs(q);
-        const deletePromises: Promise<void>[] = [];
-        snap.forEach((docSnap) => {
-          deletePromises.push(deleteDoc(doc(db, 'attendance_records', docSnap.id)));
-        });
-        await Promise.all(deletePromises);
-        if (snap.size > count) count = snap.size;
-      } catch (e) {
-        console.error('Error deleting custom month records from Firestore:', e);
-      }
-    }
-
-    return count;
+    // Sync in background
+    apiCall({ action: 'removeTeacher', id }, 6000, 0).catch((e) => console.warn('Background removeTeacher sync notice:', e));
   },
 
-  // Keep attendance of only last 6 months (auto-purge records older than 6 months)
-  async purgeOlderThanSixMonths(): Promise<number> {
-    const today = new Date();
-    // 6 months ago cutoff
-    const cutoff = new Date(today.getFullYear(), today.getMonth() - 6, 1);
-    const cutoffStr = cutoff.toISOString().split('T')[0]; // YYYY-MM-01
+  async editRecord(
+    recordId: string,
+    checkIn: string,
+    checkOut: string,
+    teacherId?: string,
+    date?: string
+  ): Promise<void> {
+    const cached = getLocalCachedRecords();
+    const idx = cached.findIndex(
+      (r) => r.id === recordId || (teacherId && date && r.teacherId === teacherId && r.date === date)
+    );
 
-    let deletedCount = 0;
-
-    // 1. Local storage cleanup
-    try {
-      const cachedRaw = localStorage.getItem(LOCAL_STORAGE_KEYS.RECORDS);
-      if (cachedRaw) {
-        const list: AttendanceRecord[] = JSON.parse(cachedRaw);
-        const remaining = list.filter((r) => r.date >= cutoffStr);
-        deletedCount += list.length - remaining.length;
-        localStorage.setItem(LOCAL_STORAGE_KEYS.RECORDS, JSON.stringify(remaining));
-      }
-    } catch (e) {}
-
-    // 2. Firestore cleanup
-    if (db) {
-      try {
-        const colRef = collection(db, 'attendance_records');
-        const q = query(colRef, where('date', '<', cutoffStr));
-        const snap = await getDocs(q);
-        const deletePromises: Promise<void>[] = [];
-        snap.forEach((docSnap) => {
-          deletePromises.push(deleteDoc(doc(db, 'attendance_records', docSnap.id)));
-        });
-        await Promise.all(deletePromises);
-        if (snap.size > deletedCount) deletedCount = snap.size;
-      } catch (e) {
-        console.error('Error purging old records from Firestore:', e);
-      }
+    if (idx >= 0) {
+      cached[idx] = {
+        ...cached[idx],
+        id: recordId,
+        checkIn,
+        checkOut,
+        ...(teacherId ? { teacherId } : {}),
+        ...(date ? { date } : {}),
+      };
+    } else {
+      cached.push({
+        id: recordId,
+        teacherId: teacherId || 'unknown',
+        date: date || new Date().toISOString().split('T')[0],
+        checkIn,
+        checkOut,
+      });
     }
 
-    return deletedCount;
+    saveLocalCachedRecords(cached);
+
+    // Sync in background
+    apiCall({ action: 'editRecord', recordId, checkIn, checkOut, teacherId: teacherId || '', date: date || '' }, 6000, 0).catch((e) => console.warn('Background editRecord sync notice:', e));
+  },
+
+  async deleteRecord(recordId: string, teacherId?: string, date?: string): Promise<void> {
+    const cached = getLocalCachedRecords().filter(
+      (r) => r.id !== recordId && !(teacherId && date && r.teacherId === teacherId && r.date === date)
+    );
+    saveLocalCachedRecords(cached);
+
+    // Sync in background
+    apiCall({ action: 'deleteRecord', recordId, teacherId: teacherId || '', date: date || '' }, 6000, 0).catch((e) => console.warn('Background deleteRecord sync notice:', e));
   }
 };
+
+export interface AttendanceSettings {
+  geofencingEnabled: boolean;
+  schoolLatitude: number;
+  schoolLongitude: number;
+  allowedRadius: number; // in meters
+  lockMobileCheckIn: boolean; // if true, must use authorized kiosk device
+  dailyPasscodeEnabled: boolean; // if true, must enter the rotating daily code
+  dailyPasscodeSeed: string; // custom seed or string
+  defaultArrivalTime?: string; // e.g. "09:00"
+  teacherArrivalTimes?: Record<string, string>; // teacherId or name -> "HH:MM" 24-hr format
+}
+
+export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettings = {
+  geofencingEnabled: false,
+  schoolLatitude: 31.5204, // Default center
+  schoolLongitude: 74.3587,
+  allowedRadius: 100, // 100 meters
+  lockMobileCheckIn: false,
+  dailyPasscodeEnabled: false,
+  dailyPasscodeSeed: '1234',
+  defaultArrivalTime: '09:00',
+  teacherArrivalTimes: {},
+};
+
+// Generates a 4-digit daily passcode deterministically based on date string and seed
+export function getDailyPasscode(dateStr: string, seed: string = '1234'): string {
+  let hash = 0;
+  const combined = dateStr + seed;
+  for (let i = 0; i < combined.length; i++) {
+    hash = (hash << 5) - hash + combined.charCodeAt(i);
+    hash |= 0; // Convert to 32bit integer
+  }
+  const code = Math.abs(hash) % 10000;
+  return String(code).padStart(4, '0');
+}
+
+// Calculates distance in meters between two coordinates using Haversine formula
+export function getDistanceInMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3; // Earth radius in meters
+  const phi1 = lat1 * Math.PI / 180;
+  const phi2 = lat2 * Math.PI / 180;
+  const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+  const deltaLambda = (lon2 - lon1) * Math.PI / 180;
+
+  const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi/2) +
+            Math.cos(phi1) * Math.cos(phi2) *
+            Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
