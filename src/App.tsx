@@ -3,6 +3,7 @@ import { Teacher, Student, ClassSlot, LessonEntry, StudentProfile } from './type
 import { StorageService } from './lib/storage';
 import { db } from './lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { formatTimeToAMPM, getStudentDisplayName } from './lib/utils';
 import DashboardView from './components/DashboardView';
 import TimetableView from './components/TimetableView';
 import DailyLogView from './components/DailyLogView';
@@ -421,10 +422,14 @@ export default function App() {
     });
 
     let html = `
-      <div style="font-family:'IBM Plex Sans', sans-serif; color: #1B2430; max-width: 760px; margin: 0 auto; padding: 24px;">
-        <h1 style="font-family:'Lora', serif; font-size: 24px; margin: 0 0 4px; font-weight: 600;">${teacher.name}</h1>
-        <div style="color: #5B6672; font-size: 13px; margin-bottom: 24px; border-bottom: 2px solid #C3CBD4; padding-bottom: 8px;">
-          Weekly Timetable &middot; Generated ${todayStr}
+      <div style="font-family:'IBM Plex Sans', -apple-system, sans-serif; color: #1B2430; max-width: 760px; margin: 0 auto; padding: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f6b5c; padding-bottom: 12px; margin-bottom: 20px;">
+          <div>
+            <h1 style="font-family:'Lora', serif; font-size: 24px; margin: 0 0 4px; font-weight: 700; color: #0f172a;">${teacher.name}</h1>
+            <div style="color: #0f6b5c; font-size: 14px; font-weight: 600;">Teacher Weekly Timetable</div>
+            <div style="color: #64748b; font-size: 12px; margin-top: 2px;">Islamic Education Centre &middot; Generated ${todayStr}</div>
+          </div>
+          ${schoolLogo ? `<img src="${schoolLogo}" alt="School Logo" style="height: 52px; max-width: 150px; object-fit: contain; border-radius: 4px;" />` : ''}
         </div>
     `;
 
@@ -436,16 +441,16 @@ export default function App() {
 
       html += `
         <div style="margin-bottom: 20px; page-break-inside: avoid;">
-          <h2 style="font-family:'Lora', serif; font-size: 16px; margin: 0 0 8px; color: #0f6b5c; border-bottom: 1px solid #DCE1E7; padding-bottom: 4px;">
+          <h2 style="font-family:'Lora', serif; font-size: 15px; margin: 0 0 8px; color: #0f6b5c; border-bottom: 1px solid #DCE1E7; padding-bottom: 4px; font-weight: 600;">
             ${DAY_NAMES[dayNum]}
           </h2>
           <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
             <thead>
-              <tr style="background-color: #F7F8FA;">
-                <th style="text-align: left; padding: 8px; border-bottom: 1px solid #C3CBD4; font-weight: 600; color: #5B6672;">Time</th>
-                <th style="text-align: left; padding: 8px; border-bottom: 1px solid #C3CBD4; font-weight: 600; color: #5B6672;">Student</th>
-                <th style="text-align: left; padding: 8px; border-bottom: 1px solid #C3CBD4; font-weight: 600; color: #5B6672;">Subject</th>
-                <th style="text-align: left; padding: 8px; border-bottom: 1px solid #C3CBD4; font-weight: 600; color: #5B6672;">Duration</th>
+              <tr style="background-color: #F8FAFC;">
+                <th style="text-align: left; padding: 8px 10px; border-bottom: 1px solid #CBD5E1; font-weight: 600; color: #475569;">Time</th>
+                <th style="text-align: left; padding: 8px 10px; border-bottom: 1px solid #CBD5E1; font-weight: 600; color: #475569;">Student</th>
+                <th style="text-align: left; padding: 8px 10px; border-bottom: 1px solid #CBD5E1; font-weight: 600; color: #475569;">Subject</th>
+                <th style="text-align: left; padding: 8px 10px; border-bottom: 1px solid #CBD5E1; font-weight: 600; color: #475569;">Duration</th>
               </tr>
             </thead>
             <tbody>
@@ -454,11 +459,11 @@ export default function App() {
       daySlots.forEach((s) => {
         const student = students.find((st) => st.id === s.studentId);
         html += `
-          <tr style="border-bottom: 1px solid #EAEEF2;">
-            <td style="padding: 8px; font-weight: 500;">${s.time}</td>
-            <td style="padding: 8px; font-weight: 600;">${student?.name || 'Removed Student'}</td>
-            <td style="padding: 8px;">${s.subject}</td>
-            <td style="padding: 8px; color: #5B6672;">${s.duration} min</td>
+          <tr style="border-bottom: 1px solid #E2E8F0;">
+            <td style="padding: 8px 10px; font-weight: 500;">${formatTimeToAMPM(s.time)}</td>
+            <td style="padding: 8px 10px; font-weight: 600; color: #0f172a;">${student ? getStudentDisplayName(student) : 'Removed Student'}</td>
+            <td style="padding: 8px 10px; color: #334155;">${s.subject}</td>
+            <td style="padding: 8px 10px; color: #64748b;">${s.duration} min</td>
           </tr>
         `;
       });
@@ -471,7 +476,106 @@ export default function App() {
     });
 
     if (!hasClasses) {
-      html += `<p style="color: #8792A0; font-style: italic; text-align: center; padding: 40px 0;">No weekly classes assigned to this teacher yet.</p>`;
+      html += `<p style="color: #64748b; font-style: italic; text-align: center; padding: 40px 0; background-color: #F8FAFC; border-radius: 8px; border: 1px dashed #CBD5E1;">No weekly classes assigned to this teacher yet.</p>`;
+    }
+
+    html += `</div>`;
+
+    setPrintTeacherHtml(html);
+
+    // Apply print-specific flags on the document body
+    document.body.classList.add('printing-teacher-timetable');
+    
+    // Trigger PDF printing dialog
+    setTimeout(() => {
+      window.print();
+      // Remove class once print completes or is cancelled
+      document.body.classList.remove('printing-teacher-timetable');
+      setPrintTeacherHtml('');
+    }, 300);
+  };
+
+  // Callback to download individual student's weekly timetable as a printable PDF
+  const handleDownloadStudentTimetable = (studentId: string) => {
+    const student = students.find((s) => s.id === studentId);
+    if (!student) return;
+
+    const studentSlots = slots.filter((s) => s.studentId === studentId);
+    
+    // Sort days starting with Monday (1) through Sunday (0)
+    const dayOrder = [1, 2, 3, 4, 5, 6, 0];
+    const byDay: Record<number, ClassSlot[]> = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 0: [] };
+    studentSlots.forEach((s) => {
+      if (byDay[s.day]) byDay[s.day].push(s);
+    });
+
+    dayOrder.forEach((d) => {
+      byDay[d].sort((a, b) => a.time.localeCompare(b.time));
+    });
+
+    const todayStr = new Date().toLocaleDateString(undefined, {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    let html = `
+      <div style="font-family:'IBM Plex Sans', -apple-system, sans-serif; color: #1B2430; max-width: 760px; margin: 0 auto; padding: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f6b5c; padding-bottom: 12px; margin-bottom: 20px;">
+          <div>
+            <h1 style="font-family:'Lora', serif; font-size: 24px; margin: 0 0 4px; font-weight: 700; color: #0f172a;">${getStudentDisplayName(student)}</h1>
+            <div style="color: #0f6b5c; font-size: 14px; font-weight: 600;">Student Weekly Timetable</div>
+            <div style="color: #64748b; font-size: 12px; margin-top: 2px;">Islamic Education Centre &middot; Generated ${todayStr}</div>
+          </div>
+          ${schoolLogo ? `<img src="${schoolLogo}" alt="School Logo" style="height: 52px; max-width: 150px; object-fit: contain; border-radius: 4px;" />` : ''}
+        </div>
+    `;
+
+    let hasClasses = false;
+    dayOrder.forEach((dayNum) => {
+      const daySlots = byDay[dayNum];
+      if (daySlots.length === 0) return;
+      hasClasses = true;
+
+      html += `
+        <div style="margin-bottom: 20px; page-break-inside: avoid;">
+          <h2 style="font-family:'Lora', serif; font-size: 15px; margin: 0 0 8px; color: #0f6b5c; border-bottom: 1px solid #DCE1E7; padding-bottom: 4px; font-weight: 600;">
+            ${DAY_NAMES[dayNum]}
+          </h2>
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <thead>
+              <tr style="background-color: #F8FAFC;">
+                <th style="text-align: left; padding: 8px 10px; border-bottom: 1px solid #CBD5E1; font-weight: 600; color: #475569;">Time</th>
+                <th style="text-align: left; padding: 8px 10px; border-bottom: 1px solid #CBD5E1; font-weight: 600; color: #475569;">Teacher</th>
+                <th style="text-align: left; padding: 8px 10px; border-bottom: 1px solid #CBD5E1; font-weight: 600; color: #475569;">Subject</th>
+                <th style="text-align: left; padding: 8px 10px; border-bottom: 1px solid #CBD5E1; font-weight: 600; color: #475569;">Duration</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+
+      daySlots.forEach((s) => {
+        const teacher = teachers.find((t) => t.id === s.teacherId);
+        html += `
+          <tr style="border-bottom: 1px solid #E2E8F0;">
+            <td style="padding: 8px 10px; font-weight: 500;">${formatTimeToAMPM(s.time)}</td>
+            <td style="padding: 8px 10px; font-weight: 600; color: #0f172a;">${teacher?.name || 'Unassigned Teacher'}</td>
+            <td style="padding: 8px 10px; color: #334155;">${s.subject}</td>
+            <td style="padding: 8px 10px; color: #64748b;">${s.duration} min</td>
+          </tr>
+        `;
+      });
+
+      html += `
+            </tbody>
+          </table>
+        </div>
+      `;
+    });
+
+    if (!hasClasses) {
+      html += `<p style="color: #64748b; font-style: italic; text-align: center; padding: 40px 0; background-color: #F8FAFC; border-radius: 8px; border: 1px dashed #CBD5E1;">No weekly classes assigned to this student yet.</p>`;
     }
 
     html += `</div>`;
@@ -834,6 +938,7 @@ export default function App() {
                   onUpdateTeachers={setTeachers}
                   onUpdateStudents={setStudents}
                   onDownloadTimetable={handleDownloadTeacherTimetable}
+                  onDownloadStudentTimetable={handleDownloadStudentTimetable}
                   onOpenRestoreModal={() => setIsDataRestoreOpen(true)}
                 />
               )}
