@@ -1,10 +1,7 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /lesson_register_store/{document} {
-      // Allows anyone to read and write records to store timetables, students, logs, and subs.
-      // This is perfect for a shared administration register.
+    match /{document=**} {
       allow read, write: if true;
     }
   }
