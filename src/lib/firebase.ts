@@ -1,29 +1,15 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
-// Replace with your actual Firebase project credentials
-// These can be configured securely using Vite environment variables (.env file)
 const firebaseConfig = {
-  apiKey: (import.meta as any).env?.VITE_FIREBASE_API_KEY,
-  authDomain: (import.meta as any).env?.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: (import.meta as any).env?.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: (import.meta as any).env?.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: (import.meta as any).env?.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: (import.meta as any).env?.VITE_FIREBASE_APP_ID,
+  projectId: "gen-lang-client-0396790868",
+  appId: "1:323581180173:web:28cd29e99114129fb11844",
+  apiKey: "AIzaSyBEt9j6PeAw5gKq7-AIcFVf4bfGbbS9KIQ",
+  authDomain: "gen-lang-client-0396790868.firebaseapp.com",
+  firestoreDatabaseId: "ai-studio-lessonregister-af576a67-cb60-45c9-962f-11eadf9f6017",
+  storageBucket: "gen-lang-client-0396790868.firebasestorage.app",
+  messagingSenderId: "323581180173",
 };
 
-const isConfigured = !!(
-  firebaseConfig.apiKey &&
-  firebaseConfig.projectId &&
-  firebaseConfig.apiKey !== 'YOUR_API_KEY'
-);
-
-// Initialize Firebase app safely
-export const app = isConfigured
-  ? (getApps().length === 0 ? initializeApp(firebaseConfig) : getApp())
-  : null;
-
-// Export Firestore and Authentication
-export const db = app ? getFirestore(app) : null;
-export const auth = app ? getAuth(app) : null;
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || "(default)");
