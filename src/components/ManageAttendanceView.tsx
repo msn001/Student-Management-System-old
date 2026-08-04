@@ -1,968 +1,965 @@
 import React, { useState, useEffect } from 'react';
-import { AttendanceService, AttendanceTeacher, AttendanceRecord, AttendanceSettings, DEFAULT_ATTENDANCE_SETTINGS, getDailyPasscode } from '../lib/attendanceService';
-import { UserCheck, Plus, Trash2, Edit2, X, Check, AlertTriangle, Printer, User, QrCode, ClipboardList, ShieldAlert, MapPin, Lock, Smartphone, Laptop, KeyRound, Activity, HardDrive, Clock, Save, CheckCircle2, AlertCircle, Pencil } from 'lucide-react';
-import { formatTimeToAMPM } from '../lib/utils';
-import { StorageService } from '../lib/storage';
-import PruneDataModal from './PruneDataModal';
-import StorageUsageCard from './StorageUsageCard';
+import {
+  AttendanceService,
+  AttendanceTeacher,
+  AttendanceRecord,
+  AttendanceSettings,
+  parseTimeToMinutes
+} from '../lib/attendanceService';
+import {
+  UserCheck,
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  UserX,
+  Edit3,
+  Trash2,
+  Plus,
+  Save,
+  X,
+  MapPin,
+  Calendar,
+  KeyRound,
+  ShieldCheck,
+  RefreshCw,
+  Search,
+  Filter,
+  Users
+} from 'lucide-react';
 
+interface AdminAccessViewProps {
+  mainTeachers?: { id: string; name: string; subject?: string }[];
+  onTeachersUpdated?: (updated: { id: string; name: string; subject?: string }[]) => void;
+}
 
-const MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
-];
+export default function AdminAccessView({ mainTeachers = [], onTeachersUpdated }: AdminAccessViewProps) {
+  const [activeSubTab, setActiveSubTab] = useState<'records' | 'teachers' | 'location'>('records');
 
-export default function ManageAttendanceView() {
-  const [activeSubTab, setActiveSubTab] = useState<'teachers' | 'shifts' | 'report'>('teachers');
+  // Month & Date filters
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [filterDate, setFilterDate] = useState<string>('');
+  const [searchTeacher, setSearchTeacher] = useState<string>('');
+
+  // Data state
+  const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [teachers, setTeachers] = useState<AttendanceTeacher[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  // Security settings states
-  const [securitySettings, setSecuritySettings] = useState<AttendanceSettings>(DEFAULT_ATTENDANCE_SETTINGS);
-  const [saveLoading, setSaveLoading] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState('');
-  const [saveArrivalSuccess, setSaveArrivalSuccess] = useState(false);
-  const [detecting, setDetecting] = useState(false);
-  const [showPruneModal, setShowPruneModal] = useState(false);
-  const [isThisKiosk, setIsThisKiosk] = useState(() => {
-    return localStorage.getItem('is_authorized_kiosk') === 'true';
+  const [settings, setSettings] = useState<AttendanceSettings>({
+    latitude: 31.5204,
+    longitude: 74.3587,
+    maxDistanceMeters: 50,
+    defaultExpectedTime: '08:00',
   });
+  const [loading, setLoading] = useState<boolean>(false);
+  const [msg, setMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
-  // Add Teacher form state
-  const [newName, setNewName] = useState('');
-  const [newSubject, setNewSubject] = useState('');
-  const [newPin, setNewPin] = useState('');
-  const [addLoading, setAddLoading] = useState(false);
-  const [addSuccess, setAddSuccess] = useState('');
-  const [addError, setAddError] = useState('');
-
-  // Local storage/memory cache for PINs of newly created teachers in this session (as the server doesn't return PINs back for safety)
-  const [sessionPins, setSessionPins] = useState<Record<string, string>>({});
-
-  // QR Code base URL state
-  const [baseUrl, setBaseUrl] = useState(() => {
-    return window.location.href.split('?')[0];
-  });
-
-  // Report state
-  const [reportTeacherId, setReportTeacherId] = useState('all');
-  const [reportMonth, setReportMonth] = useState(new Date().getMonth());
-  const [reportYear, setReportYear] = useState(new Date().getFullYear());
-  const [reportRecords, setReportRecords] = useState<AttendanceRecord[]>([]);
-  const [reportLoading, setReportLoading] = useState(false);
-  const [reportError, setReportError] = useState('');
-
-  // Edit Record Modal state
+  // Edit Modal State for Records
   const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
-  const [editCheckIn, setEditCheckIn] = useState('');
-  const [editCheckOut, setEditCheckOut] = useState('');
-  const [editLoading, setEditLoading] = useState(false);
-  const [editError, setEditError] = useState('');
+  const [editCheckIn, setEditCheckIn] = useState<string>('');
+  const [editCheckOut, setEditCheckOut] = useState<string>('');
+  const [editStatus, setEditStatus] = useState<'On Time' | 'Late' | 'Absent' | 'Working'>('On Time');
+  const [editDate, setEditDate] = useState<string>('');
 
-  // Load teachers and security settings
-  const loadInitialData = async () => {
+  // Add Record Modal State
+  const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
+  const [newRecTeacherId, setNewRecTeacherId] = useState<string>('');
+  const [newRecDate, setNewRecDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [newRecCheckIn, setNewRecCheckIn] = useState<string>('08:00 AM');
+  const [newRecCheckOut, setNewRecCheckOut] = useState<string>('04:00 PM');
+
+  // Teacher Edit/Add State
+  const [editingTeacher, setEditingTeacher] = useState<AttendanceTeacher | null>(null);
+  const [tName, setTName] = useState<string>('');
+  const [tSubject, setTSubject] = useState<string>('');
+  const [tPin, setTPin] = useState<string>('');
+  const [tExpectedTime, setTExpectedTime] = useState<string>('08:00');
+
+  // Location config form
+  const [locLat, setLocLat] = useState<number>(31.5204);
+  const [locLng, setLocLng] = useState<number>(74.3587);
+  const [locRadius, setLocRadius] = useState<number>(50);
+
+  // Custom Month Purge
+  const [customMonthToDelete, setCustomMonthToDelete] = useState<string>('');
+
+  useEffect(() => {
+    loadAllData();
+  }, [selectedMonth]);
+
+  const loadAllData = async () => {
     setLoading(true);
-    setError('');
+    setMsg(null);
     try {
-      const [fetchedTeachers, fetchedSettings] = await Promise.all([
-        AttendanceService.getTeachers(),
-        StorageService.loadKey<AttendanceSettings>('attendanceSettings', DEFAULT_ATTENDANCE_SETTINGS)
-      ]);
-      setTeachers(fetchedTeachers);
-      setSecuritySettings(fetchedSettings);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load initial data.');
+      const setts = await AttendanceService.getSettings();
+      setSettings(setts);
+      setLocLat(setts.latitude);
+      setLocLng(setts.longitude);
+      setLocRadius(setts.maxDistanceMeters || 50);
+
+      let tList = await AttendanceService.getTeachers();
+      if (mainTeachers && mainTeachers.length > 0) {
+        tList = await AttendanceService.syncMainTeachers(mainTeachers);
+      }
+      setTeachers(tList);
+
+      const recs = await AttendanceService.getRecordsForMonth(selectedMonth);
+      setRecords(recs);
+    } catch (e) {
+      console.error('Error loading admin attendance data:', e);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadInitialData();
-  }, []);
+  // Filtered Records
+  const filteredRecords = records.filter((r) => {
+    if (filterDate && r.date !== filterDate) return false;
+    if (searchTeacher) {
+      const name = r.teacherName || teachers.find((t) => t.id === r.teacherId)?.name || '';
+      if (!name.toLowerCase().includes(searchTeacher.toLowerCase())) return false;
+    }
+    return true;
+  });
 
-  const handleSaveSettings = async (updated: AttendanceSettings) => {
-    setSaveLoading(true);
-    setSaveSuccess('');
+  // Summary Metrics calculation for displayed records / date
+  const todayStr = filterDate || new Date().toISOString().split('T')[0];
+  const todayRecords = records.filter((r) => r.date === todayStr);
+
+  const onTimeCount = filteredRecords.filter((r) => r.status === 'On Time').length;
+  const lateCount = filteredRecords.filter((r) => r.status === 'Late').length;
+  const presentCount = filteredRecords.filter((r) => r.checkIn && r.checkIn.trim() !== '').length;
+
+  // Teachers missing checkIn on selected filterDate/todayStr
+  const activeTeachers = teachers.filter((t) => t.active !== false);
+  const presentTeacherIds = new Set(todayRecords.filter((r) => r.checkIn).map((r) => r.teacherId));
+  const absentCount = activeTeachers.filter((t) => !presentTeacherIds.has(t.id)).length;
+
+  // Edit Record Handler
+  const openEditRecord = (r: AttendanceRecord) => {
+    setEditingRecord(r);
+    setEditCheckIn(r.checkIn || '');
+    setEditCheckOut(r.checkOut || '');
+    setEditStatus(r.status || 'On Time');
+    setEditDate(r.date || '');
+  };
+
+  const saveEditRecord = async () => {
+    if (!editingRecord) return;
+    const updated: AttendanceRecord = {
+      ...editingRecord,
+      checkIn: editCheckIn,
+      checkOut: editCheckOut,
+      status: editStatus,
+      date: editDate || editingRecord.date,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setLoading(true);
     try {
-      await StorageService.saveKey('attendanceSettings', updated);
-      setSecuritySettings(updated);
-      setSaveSuccess('Security settings saved successfully!');
-      setTimeout(() => setSaveSuccess(''), 4000);
-    } catch (err: any) {
-      alert('Error saving settings: ' + err.message);
+      await AttendanceService.saveRecord(updated);
+      setRecords((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      setEditingRecord(null);
+      setMsg({ type: 'success', text: 'Attendance record updated successfully.' });
+    } catch (e) {
+      setMsg({ type: 'error', text: 'Failed to update attendance record.' });
     } finally {
-      setSaveLoading(false);
+      setLoading(false);
     }
   };
 
-  const handleDetectLocation = () => {
+  const handleDeleteRecord = async (recordId: string) => {
+    if (!window.confirm('Are you sure you want to delete this attendance record?')) return;
+    setLoading(true);
+    try {
+      await AttendanceService.deleteRecord(recordId);
+      setRecords((prev) => prev.filter((r) => r.id !== recordId));
+      setMsg({ type: 'success', text: 'Record deleted.' });
+    } catch (e) {
+      setMsg({ type: 'error', text: 'Failed to delete record.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Add Record Handler
+  const handleAddRecord = async () => {
+    if (!newRecTeacherId) {
+      alert('Please select a teacher.');
+      return;
+    }
+    const t = teachers.find((item) => item.id === newRecTeacherId);
+    const recId = `REC_${newRecDate}_${newRecTeacherId}`;
+
+    const newRec: AttendanceRecord = {
+      id: recId,
+      teacherId: newRecTeacherId,
+      teacherName: t?.name || 'Teacher',
+      date: newRecDate,
+      checkIn: newRecCheckIn,
+      checkOut: newRecCheckOut,
+      status: 'On Time',
+      updatedAt: new Date().toISOString(),
+    };
+
+    setLoading(true);
+    try {
+      await AttendanceService.saveRecord(newRec);
+      setRecords((prev) => [newRec, ...prev]);
+      setIsAddModalOpen(false);
+      setMsg({ type: 'success', text: 'Manual attendance record added successfully.' });
+    } catch (e) {
+      setMsg({ type: 'error', text: 'Failed to add attendance record.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Delete Custom Month Handler
+  const handleDeleteCustomMonth = async () => {
+    if (!customMonthToDelete) {
+      alert('Please select a month to delete.');
+      return;
+    }
+    if (!window.confirm(`WARNING: This will permanently delete ALL attendance records for ${customMonthToDelete}. Proceed?`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const deleted = await AttendanceService.deleteCustomMonthRecords(customMonthToDelete);
+      setMsg({ type: 'success', text: `Successfully deleted ${deleted} records for ${customMonthToDelete}.` });
+      if (customMonthToDelete === selectedMonth) {
+        setRecords([]);
+      }
+      setCustomMonthToDelete('');
+    } catch (e) {
+      setMsg({ type: 'error', text: 'Failed to delete month records.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Purge older than 6 months
+  const handlePurgeSixMonths = async () => {
+    if (!window.confirm('Purge all attendance records older than 6 months?')) return;
+    setLoading(true);
+    try {
+      const deleted = await AttendanceService.purgeOlderThanSixMonths();
+      setMsg({ type: 'success', text: `6-Month Retention Cleanup complete! Removed ${deleted} old records.` });
+      loadAllData();
+    } catch (e) {
+      setMsg({ type: 'error', text: 'Purge operation failed.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Teacher Management Handlers
+  const handleSaveTeacher = async () => {
+    if (!tName.trim()) {
+      alert('Teacher name is required.');
+      return;
+    }
+    const id = editingTeacher ? editingTeacher.id : `T_${Date.now()}`;
+    const updated: AttendanceTeacher = {
+      id,
+      name: tName.trim(),
+      subject: tSubject.trim(),
+      pin: tPin.trim() || '1234',
+      expectedTime: tExpectedTime || '08:00',
+      active: true,
+    };
+
+    setLoading(true);
+    try {
+      await AttendanceService.saveTeacher(updated);
+      const newTList = await AttendanceService.getTeachers();
+      setTeachers(newTList);
+      setEditingTeacher(null);
+      setTName('');
+      setTSubject('');
+      setTPin('');
+      setTExpectedTime('08:00');
+      setMsg({ type: 'success', text: `Teacher "${updated.name}" saved with PIN "${updated.pin}".` });
+    } catch (e) {
+      setMsg({ type: 'error', text: 'Failed to save teacher profile.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteTeacherProfile = async (id: string) => {
+    if (!window.confirm('Delete teacher profile and PIN?')) return;
+    setLoading(true);
+    try {
+      await AttendanceService.deleteTeacher(id);
+      setTeachers((prev) => prev.filter((t) => t.id !== id));
+      setMsg({ type: 'success', text: 'Teacher profile removed.' });
+    } catch (e) {
+      setMsg({ type: 'error', text: 'Failed to delete teacher.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Location Config Handler
+  const handleSaveLocation = async () => {
+    setLoading(true);
+    try {
+      await AttendanceService.saveSettings({
+        latitude: Number(locLat),
+        longitude: Number(locLng),
+        maxDistanceMeters: Number(locRadius),
+      });
+      setSettings((prev) => ({
+        ...prev,
+        latitude: Number(locLat),
+        longitude: Number(locLng),
+        maxDistanceMeters: Number(locRadius),
+      }));
+      setMsg({ type: 'success', text: 'Institute GPS coordinates and 50m radius updated successfully!' });
+    } catch (e) {
+      setMsg({ type: 'error', text: 'Failed to update location settings.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDetectCurrentLocation = () => {
     if (!navigator.geolocation) {
       alert('Geolocation is not supported by your browser.');
       return;
     }
-    setDetecting(true);
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const updated = {
-          ...securitySettings,
-          schoolLatitude: parseFloat(position.coords.latitude.toFixed(6)),
-          schoolLongitude: parseFloat(position.coords.longitude.toFixed(6)),
-        };
-        setSecuritySettings(updated);
-        setDetecting(false);
-        handleSaveSettings(updated);
-        alert(`School center locked to coordinates:\nLatitude: ${updated.schoolLatitude}\nLongitude: ${updated.schoolLongitude}`);
+      (pos) => {
+        setLocLat(pos.coords.latitude);
+        setLocLng(pos.coords.longitude);
+        alert(`Location detected: Lat ${pos.coords.latitude.toFixed(6)}, Lng ${pos.coords.longitude.toFixed(6)}`);
       },
-      (error) => {
-        setDetecting(false);
-        alert(`Failed to detect location: ${error.message}. Please key in coordinates manually.`);
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
+      (err) => alert('Unable to detect location. Please check browser permissions.')
     );
-  };
-
-  const handleToggleThisDeviceKiosk = () => {
-    const nextVal = !isThisKiosk;
-    setIsThisKiosk(nextVal);
-    if (nextVal) {
-      localStorage.setItem('is_authorized_kiosk', 'true');
-      alert('SUCCESS: This device has been authorized as a Central Reception Kiosk.\n\nIt will bypass all Geofencing/Whiteboard restrictions and allow direct physical check-ins for teachers.');
-    } else {
-      localStorage.removeItem('is_authorized_kiosk');
-      alert('This device is no longer authorized as a Central Kiosk.');
-    }
-  };
-
-
-  // Fetch report data
-  const fetchReport = async () => {
-    setReportLoading(true);
-    setReportError('');
-    try {
-      const monthPrefix = `${reportYear}-${String(reportMonth + 1).padStart(2, '0')}`;
-      const records = await AttendanceService.getRecords(monthPrefix);
-      setReportRecords(records);
-    } catch (err: any) {
-      setReportError(err.message || 'Failed to fetch report records.');
-    } finally {
-      setReportLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeSubTab === 'report') {
-      fetchReport();
-    }
-  }, [activeSubTab, reportMonth, reportYear]);
-
-  // Add Teacher Action
-  const handleAddTeacher = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAddError('');
-    setAddSuccess('');
-
-    const trimmedName = newName.trim();
-    const trimmedSubject = newSubject.trim();
-    const trimmedPin = newPin.trim();
-
-    if (!trimmedName) {
-      setAddError('Full name is required.');
-      return;
-    }
-    if (!/^\d{4}$/.test(trimmedPin)) {
-      setAddError('PIN must be exactly 4 digits.');
-      return;
-    }
-
-    setAddLoading(true);
-    try {
-      const res = await AttendanceService.addTeacher(trimmedName, trimmedSubject, trimmedPin);
-      
-      // Store in session pins so we can display it temporarily in the list
-      setSessionPins((prev) => ({ ...prev, [res.id]: trimmedPin }));
-
-      // Append to local teachers state
-      const newTeacher: AttendanceTeacher = {
-        id: res.id,
-        name: trimmedName,
-        subject: trimmedSubject,
-        pin: trimmedPin,
-      };
-
-      setTeachers((prev) => [...prev, newTeacher]);
-      
-      // Reset inputs
-      setNewName('');
-      setNewSubject('');
-      setNewPin('');
-      setAddSuccess(`${trimmedName} added successfully! Remember PIN: ${trimmedPin}`);
-    } catch (err: any) {
-      setAddError(err.message || 'Failed to add teacher.');
-    } finally {
-      setAddLoading(false);
-    }
-  };
-
-  // Remove Teacher Action
-  const handleRemoveTeacher = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to remove ${name}? Attendance logs will be kept but they will not be able to clock in anymore.`)) {
-      return;
-    }
-
-    try {
-      await AttendanceService.removeTeacher(id);
-      setTeachers((prev) => prev.filter((t) => t.id !== id));
-      alert(`${name} removed successfully.`);
-    } catch (err: any) {
-      alert(`Error removing teacher: ${err.message}`);
-    }
-  };
-
-  // Helper functions for expected arrival times & punctuality
-  const getTeacherExpectedTime = (teacherIdOrName: string): string => {
-    const t = teachers.find(
-      (x) => x.id === teacherIdOrName || x.name.toLowerCase() === teacherIdOrName.toLowerCase()
-    );
-    const idKey = t ? t.id : teacherIdOrName;
-    const nameKey = t ? t.name : teacherIdOrName;
-    const times = securitySettings.teacherArrivalTimes || {};
-    return times[idKey] || times[nameKey] || securitySettings.defaultArrivalTime || '09:00';
-  };
-
-  const checkArrivalPunctuality = (checkInStr: string, expectedTimeStr: string) => {
-    if (!checkInStr) return { isLate: false, lateMins: 0, statusLabel: '—' };
-    const [ciH, ciM] = checkInStr.split(':').map(Number);
-    const ciMins = (ciH || 0) * 60 + (ciM || 0);
-
-    const [expH, expM] = (expectedTimeStr || '09:00').split(':').map(Number);
-    const expMins = (expH || 0) * 60 + (expM || 0);
-
-    const diff = ciMins - expMins;
-    if (diff > 0) {
-      return {
-        isLate: true,
-        lateMins: diff,
-        statusLabel: `Late (${diff}m)`,
-      };
-    }
-    return {
-      isLate: false,
-      lateMins: 0,
-      statusLabel: 'On Time',
-    };
-  };
-
-  // Edit or Create Record Modal Triggers
-  const handleOpenCreateOrEdit = (
-    teacherId: string,
-    dateStr: string,
-    existingRec?: AttendanceRecord,
-    expectedTime?: string
-  ) => {
-    if (existingRec) {
-      setEditingRecord(existingRec);
-      setEditCheckIn(existingRec.checkIn || '');
-      setEditCheckOut(existingRec.checkOut || '');
-    } else {
-      const draftId = `REC_${teacherId}_${dateStr.replace(/-/g, '')}_${Date.now()}`;
-      setEditingRecord({
-        id: draftId,
-        teacherId,
-        date: dateStr,
-        checkIn: expectedTime || '09:00',
-        checkOut: '17:00',
-      });
-      setEditCheckIn(expectedTime || '09:00');
-      setEditCheckOut('17:00');
-    }
-    setEditError('');
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingRecord) return;
-    if (!editCheckIn) {
-      setEditError('Check-in time is required.');
-      return;
-    }
-
-    setEditLoading(true);
-    setEditError('');
-    try {
-      await AttendanceService.editRecord(
-        editingRecord.id,
-        editCheckIn,
-        editCheckOut,
-        editingRecord.teacherId,
-        editingRecord.date
-      );
-      
-      // Update local report list state
-      setReportRecords((prev) => {
-        const exists = prev.some((r) => r.id === editingRecord.id || (r.teacherId === editingRecord.teacherId && r.date === editingRecord.date));
-        if (exists) {
-          return prev.map((r) =>
-            (r.id === editingRecord.id || (r.teacherId === editingRecord.teacherId && r.date === editingRecord.date))
-              ? { ...r, id: editingRecord.id, checkIn: editCheckIn, checkOut: editCheckOut, teacherId: editingRecord.teacherId, date: editingRecord.date }
-              : r
-          );
-        } else {
-          return [
-            ...prev,
-            {
-              id: editingRecord.id,
-              teacherId: editingRecord.teacherId,
-              date: editingRecord.date,
-              checkIn: editCheckIn,
-              checkOut: editCheckOut,
-            },
-          ];
-        }
-      });
-
-      setEditingRecord(null);
-    } catch (err: any) {
-      setEditError(err.message || 'Failed to update attendance record.');
-    } finally {
-      setEditLoading(false);
-    }
-  };
-
-  const handleDeleteRecord = async () => {
-    if (!editingRecord) return;
-    if (!confirm('Are you sure you want to mark absent or delete this record?')) {
-      return;
-    }
-
-    setEditLoading(true);
-    setEditError('');
-    try {
-      await AttendanceService.deleteRecord(editingRecord.id, editingRecord.teacherId, editingRecord.date);
-      setReportRecords((prev) => prev.filter((r) => r.id !== editingRecord.id && !(r.teacherId === editingRecord.teacherId && r.date === editingRecord.date)));
-      setEditingRecord(null);
-    } catch (err: any) {
-      setEditError(err.message || 'Failed to delete attendance record.');
-    } finally {
-      setEditLoading(false);
-    }
-  };
-
-  // Calculations for Report stats
-  const calculateMins = (a: string, b: string): number => {
-    if (!a || !b) return 0;
-    const [ah, am] = a.split(':').map(Number);
-    const [bh, bm] = b.split(':').map(Number);
-    const m = (bh * 60 + bm) - (ah * 60 + am);
-    return m < 0 ? m + 1440 : m;
-  };
-
-  const formatMins = (totalMinutes: number): string => {
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    return `${hours}h ${String(minutes).padStart(2, '0')}m`;
   };
 
   return (
     <div className="space-y-6">
-      {/* Sub-navigation tabs */}
-      <div className="flex border-b border-slate-200 no-print print:hidden">
-        <button
-          onClick={() => setActiveSubTab('teachers')}
-          className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
-            activeSubTab === 'teachers'
-              ? 'border-blue-600 text-blue-600 font-bold bg-blue-50/20'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <UserCheck size={16} /> Manage Teachers & QR Kiosk
-        </button>
-        <button
-          onClick={() => setActiveSubTab('shifts')}
-          className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
-            activeSubTab === 'shifts'
-              ? 'border-blue-600 text-blue-600 font-bold bg-blue-50/20'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <Clock size={16} /> Arrival Times &amp; Shifts
-        </button>
-        <button
-          onClick={() => setActiveSubTab('report')}
-          className={`px-6 py-3 text-sm font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
-            activeSubTab === 'report'
-              ? 'border-blue-600 text-blue-600 font-bold bg-blue-50/20'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <ClipboardList size={16} /> Full Reports & Adjustments
-        </button>
+      {/* Top Banner */}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 rounded-2xl p-6 text-white shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center space-x-2">
+            <ShieldCheck className="w-7 h-7 text-indigo-400" />
+            <h1 className="text-xl font-black">Admin Attendance Portal</h1>
+          </div>
+          <p className="text-slate-300 text-xs mt-1">
+            Edit attendance records, monitor late/on-time statistics, manage teacher PINs, and set GPS geofence rules.
+          </p>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex items-center bg-white/10 p-1.5 rounded-xl border border-white/10 space-x-1 shrink-0">
+          <button
+            onClick={() => setActiveSubTab('records')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeSubTab === 'records' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            Attendance Records
+          </button>
+          <button
+            onClick={() => setActiveSubTab('teachers')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeSubTab === 'teachers' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            Manage PINs & Teachers
+          </button>
+          <button
+            onClick={() => setActiveSubTab('location')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeSubTab === 'location' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            GPS Location Rule
+          </button>
+        </div>
       </div>
 
-      {activeSubTab === 'teachers' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Add Teacher Column */}
-          <div className="lg:col-span-1 space-y-6">
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between">
-              <div>
-                <h4 className="serif-title font-semibold text-base text-slate-800 border-b pb-2 mb-4 flex items-center gap-1.5">
-                  <Plus size={16} className="text-blue-600" /> Add New Teacher
-                </h4>
-                <p className="text-xs text-slate-500 mb-5 leading-relaxed">
-                  Register a new teacher. A unique 4-digit PIN allows them to clock in/out at the kiosk.
-                </p>
+      {/* Action Notification Box */}
+      {msg && (
+        <div
+          className={`p-4 rounded-xl text-sm font-medium border flex items-center justify-between ${
+            msg.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-rose-50 border-rose-200 text-rose-800'
+          }`}
+        >
+          <div className="flex items-center space-x-2">
+            {msg.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-600" /> : <AlertTriangle className="w-5 h-5 text-rose-600" />}
+            <span>{msg.text}</span>
+          </div>
+          <button onClick={() => setMsg(null)} className="text-xs font-bold underline cursor-pointer">
+            Dismiss
+          </button>
+        </div>
+      )}
 
-                <form onSubmit={handleAddTeacher} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Full Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Ali Khan"
-                      className="w-full px-3 py-2 border border-slate-300 rounded focus:border-blue-500 bg-white focus:outline-none text-xs font-medium"
-                      value={newName}
-                      onChange={(e) => setNewName(e.target.value)}
-                    />
-                  </div>
+      {/* SUMMARY METRIC CARDS */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* On-Time Arrivals */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">On-Time Arrivals</span>
+            <div className="text-2xl font-black text-emerald-600 mt-1">{onTimeCount}</div>
+          </div>
+          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+            <CheckCircle2 className="w-6 h-6" />
+          </div>
+        </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Subject</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Mathematics"
-                      className="w-full px-3 py-2 border border-slate-300 rounded focus:border-blue-500 bg-white focus:outline-none text-xs font-medium"
-                      value={newSubject}
-                      onChange={(e) => setNewSubject(e.target.value)}
-                    />
-                  </div>
+        {/* Late Arrivals */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Late Arrivals</span>
+            <div className="text-2xl font-black text-amber-600 mt-1">{lateCount}</div>
+          </div>
+          <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+            <Clock className="w-6 h-6" />
+          </div>
+        </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">4-Digit PIN</label>
-                    <input
-                      type="text"
-                      maxLength={4}
-                      placeholder="e.g. 1234"
-                      className="w-full px-3 py-2 border border-slate-300 rounded focus:border-blue-500 bg-white focus:outline-none text-xs font-mono font-bold tracking-widest text-center"
-                      value={newPin}
-                      onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
-                    />
-                  </div>
+        {/* Total Present */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Present</span>
+            <div className="text-2xl font-black text-blue-600 mt-1">{presentCount}</div>
+          </div>
+          <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+            <UserCheck className="w-6 h-6" />
+          </div>
+        </div>
 
-                  {addError && (
-                    <div className="p-3 bg-red-50 text-red-600 text-xs font-semibold rounded-lg border border-red-100 flex items-center gap-1">
-                      <AlertTriangle size={14} /> {addError}
-                    </div>
+        {/* Total Absent */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+          <div>
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Absent Today</span>
+            <div className="text-2xl font-black text-rose-600 mt-1">{absentCount}</div>
+          </div>
+          <div className="p-3 bg-rose-50 text-rose-600 rounded-xl">
+            <UserX className="w-6 h-6" />
+          </div>
+        </div>
+      </div>
+
+      {/* TAB 1: ATTENDANCE RECORDS & EDITING */}
+      {activeSubTab === 'records' && (
+        <div className="space-y-6">
+          {/* Controls & Filters Header */}
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-4">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                {/* Month Picker */}
+                <div className="flex items-center space-x-2 bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs font-medium">
+                  <Calendar className="w-4 h-4 text-slate-500" />
+                  <span className="text-slate-500 font-bold">Month:</span>
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    className="bg-transparent font-bold text-slate-800 focus:outline-none"
+                  />
+                </div>
+
+                {/* Specific Date Filter */}
+                <div className="flex items-center space-x-2 bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs font-medium">
+                  <Filter className="w-4 h-4 text-slate-500" />
+                  <span className="text-slate-500 font-bold">Specific Date:</span>
+                  <input
+                    type="date"
+                    value={filterDate}
+                    onChange={(e) => setFilterDate(e.target.value)}
+                    className="bg-transparent text-slate-800 focus:outline-none"
+                  />
+                  {filterDate && (
+                    <button onClick={() => setFilterDate('')} className="text-xs text-rose-600 font-bold ml-1">
+                      Clear
+                    </button>
                   )}
+                </div>
 
-                  {addSuccess && (
-                    <div className="p-3 bg-green-50 text-green-700 text-xs font-bold rounded-lg border border-green-100 leading-relaxed">
-                      {addSuccess}
-                    </div>
-                  )}
+                {/* Search Teacher */}
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search teacher..."
+                    value={searchTeacher}
+                    onChange={(e) => setSearchTeacher(e.target.value)}
+                    className="pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
 
-                  <button
-                    type="submit"
-                    disabled={addLoading}
-                    className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded hover:shadow-xs transition-all flex justify-center items-center gap-1 text-xs cursor-pointer disabled:opacity-50"
-                  >
-                    {addLoading ? (
-                      <div className="w-4 h-4 rounded-full border-2 border-slate-300 border-t-white animate-spin" />
-                    ) : (
-                      <>
-                        <Plus size={14} /> Add Teacher
-                      </>
-                    )}
-                  </button>
-                </form>
+              <div className="flex items-center space-x-2 w-full md:w-auto justify-end">
+                <button
+                  onClick={() => setIsAddModalOpen(true)}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-xs flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Attendance Row</span>
+                </button>
+                <button
+                  onClick={loadAllData}
+                  className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all cursor-pointer"
+                  title="Refresh Data"
+                >
+                  <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                </button>
               </div>
             </div>
 
-            {/* Attendance Security Settings */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
-              <div>
-                <h4 className="serif-title font-semibold text-base text-slate-800 border-b pb-2 mb-3 flex items-center gap-1.5">
-                  <ShieldAlert size={16} className="text-amber-500" /> Anti-Fraud Security
-                </h4>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  Prevent teachers from checking in or out when they are not physically present at the center.
-                </p>
+            {/* Custom Month Deletion & 6-Month Purge Bar */}
+            <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+              <div className="flex items-center space-x-2">
+                <span className="font-bold text-slate-700">Delete Attendance for Custom Month:</span>
+                <input
+                  type="month"
+                  value={customMonthToDelete}
+                  onChange={(e) => setCustomMonthToDelete(e.target.value)}
+                  className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none"
+                />
+                <button
+                  onClick={handleDeleteCustomMonth}
+                  disabled={!customMonthToDelete || loading}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg transition-all disabled:opacity-50 cursor-pointer flex items-center space-x-1"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Month</span>
+                </button>
               </div>
 
-              {/* Security Option 1: GPS Geofencing */}
-              <div className="space-y-3 pt-1 border-t border-slate-100">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <MapPin size={15} className="text-blue-500" />
-                    <span className="text-xs font-bold text-slate-700">GPS Geofencing</span>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="sr-only peer"
-                      checked={securitySettings.geofencingEnabled}
-                      onChange={(e) => {
-                        const updated = { ...securitySettings, geofencingEnabled: e.target.checked };
-                        handleSaveSettings(updated);
-                      }}
-                    />
-                    <div className="w-8 h-4 bg-slate-200 rounded-full peer peer-checked:bg-blue-600 relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:after:translate-x-[14px]"></div>
-                  </label>
-                </div>
-
-                {securitySettings.geofencingEnabled && (
-                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-[11px] space-y-2.5">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-[9px] font-bold text-slate-500 uppercase">Latitude</label>
-                        <input
-                          type="number"
-                          step="any"
-                          className="w-full px-2 py-1 border border-slate-300 rounded text-xs bg-white text-slate-800"
-                          value={securitySettings.schoolLatitude}
-                          onChange={(e) => {
-                            const updated = { ...securitySettings, schoolLatitude: parseFloat(e.target.value) || 0 };
-                            setSecuritySettings(updated);
-                          }}
-                          onBlur={() => handleSaveSettings(securitySettings)}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-bold text-slate-500 uppercase">Longitude</label>
-                        <input
-                          type="number"
-                          step="any"
-                          className="w-full px-2 py-1 border border-slate-300 rounded text-xs bg-white text-slate-800"
-                          value={securitySettings.schoolLongitude}
-                          onChange={(e) => {
-                            const updated = { ...securitySettings, schoolLongitude: parseFloat(e.target.value) || 0 };
-                            setSecuritySettings(updated);
-                          }}
-                          onBlur={() => handleSaveSettings(securitySettings)}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex-1">
-                        <label className="block text-[9px] font-bold text-slate-500 uppercase">Radius (meters)</label>
-                        <input
-                          type="number"
-                          className="w-full px-2 py-1 border border-slate-300 rounded text-xs bg-white text-slate-800"
-                          value={securitySettings.allowedRadius}
-                          onChange={(e) => {
-                            const updated = { ...securitySettings, allowedRadius: parseInt(e.target.value) || 50 };
-                            setSecuritySettings(updated);
-                          }}
-                          onBlur={() => handleSaveSettings(securitySettings)}
-                        />
-                      </div>
-                      
-                      <button
-                        type="button"
-                        onClick={handleDetectLocation}
-                        disabled={detecting}
-                        className="mt-3 px-2 py-1 bg-blue-50 text-blue-700 font-semibold rounded hover:bg-blue-100 transition-colors flex items-center gap-1 text-[10px] cursor-pointer"
-                      >
-                        <MapPin size={11} /> {detecting ? 'Detecting...' : 'Lock Coords'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Security Option 2: Daily Rotating Noticeboard Passcode */}
-              <div className="space-y-3 pt-3 border-t border-slate-100">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <KeyRound size={15} className="text-emerald-500" />
-                    <span className="text-xs font-bold text-slate-700">Noticeboard Passcode</span>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="sr-only peer"
-                      checked={securitySettings.dailyPasscodeEnabled}
-                      onChange={(e) => {
-                        const updated = { ...securitySettings, dailyPasscodeEnabled: e.target.checked };
-                        handleSaveSettings(updated);
-                      }}
-                    />
-                    <div className="w-8 h-4 bg-slate-200 rounded-full peer peer-checked:bg-blue-600 relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:after:translate-x-[14px]"></div>
-                  </label>
-                </div>
-
-                <p className="text-[10px] text-slate-400 leading-relaxed">
-                  Generates a dynamic 4-digit code. Write this code on your whiteboard. Teachers must enter it on their phones to clock in.
-                </p>
-
-                {securitySettings.dailyPasscodeEnabled && (
-                  <div className="bg-emerald-50/50 p-3 rounded-xl border border-emerald-100 space-y-2 text-[11px]">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Today's Active Code:</span>
-                      <strong className="text-emerald-700 text-sm font-mono tracking-widest bg-emerald-100 px-2.5 py-0.5 rounded-md border border-emerald-200 shadow-3xs">
-                        {getDailyPasscode(new Date().toISOString().slice(0, 10), securitySettings.dailyPasscodeSeed)}
-                      </strong>
-                    </div>
-                    <div className="flex items-center gap-1.5 justify-between">
-                      <span className="text-slate-500 text-[10px]">Secret Seed Key:</span>
-                      <input
-                        type="text"
-                        className="px-1.5 py-0.5 border border-slate-300 rounded text-[10px] font-mono text-slate-600 w-20 bg-white"
-                        value={securitySettings.dailyPasscodeSeed}
-                        onChange={(e) => {
-                          const updated = { ...securitySettings, dailyPasscodeSeed: e.target.value };
-                          setSecuritySettings(updated);
-                        }}
-                        onBlur={() => handleSaveSettings(securitySettings)}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Security Option 3: Lock Mobile Check-Ins */}
-              <div className="space-y-3 pt-3 border-t border-slate-100">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Smartphone size={15} className="text-purple-500" />
-                    <span className="text-xs font-bold text-slate-700">Lock Mobile Check-In</span>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="sr-only peer"
-                      checked={securitySettings.lockMobileCheckIn}
-                      onChange={(e) => {
-                        const updated = { ...securitySettings, lockMobileCheckIn: e.target.checked };
-                        handleSaveSettings(updated);
-                      }}
-                    />
-                    <div className="w-8 h-4 bg-slate-200 rounded-full peer peer-checked:bg-blue-600 relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:after:translate-x-[14px]"></div>
-                  </label>
-                </div>
-                <p className="text-[10px] text-slate-400 leading-relaxed">
-                  Require teachers to use a designated tablet/phone mounted at your reception desk, completely disabling direct check-ins from their own mobile phones.
-                </p>
-              </div>
-
-              {/* Central Kiosk Device Config */}
-              <div className="pt-3 border-t border-slate-100 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-600">Register This Browser as Central Kiosk</span>
-                  <button
-                    onClick={handleToggleThisDeviceKiosk}
-                    className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1 ${
-                      isThisKiosk 
-                        ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-200' 
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
-                    }`}
-                  >
-                    {isThisKiosk ? <Laptop size={11} /> : <Smartphone size={11} />}
-                    {isThisKiosk ? 'Authorized Kiosk' : 'Authorize This Browser'}
-                  </button>
-                </div>
-              </div>
-
-              {saveSuccess && (
-                <div className="p-2 bg-emerald-50 text-emerald-700 text-[10px] font-semibold rounded-lg border border-emerald-100 text-center animate-fade-in">
-                  {saveSuccess}
-                </div>
-              )}
+              <button
+                onClick={handlePurgeSixMonths}
+                disabled={loading}
+                className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg transition-all cursor-pointer flex items-center space-x-1.5"
+              >
+                <Clock className="w-3.5 h-3.5 text-slate-500" />
+                <span>Auto-Purge Records Older Than 6 Months</span>
+              </button>
             </div>
-
-            {/* Storage Usage & Memory Card */}
-            <StorageUsageCard onOpenPruneModal={() => setShowPruneModal(true)} />
           </div>
 
-          {/* Teacher List & QR Code Column */}
-          <div className="lg:col-span-2 space-y-6">
-            
-            {/* Teacher Directory Table */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
-              <h4 className="serif-title font-semibold text-base text-slate-800 border-b pb-2 mb-4 flex items-center justify-between">
-                <span>Registered Teacher Directory</span>
-                <span className="text-xs bg-slate-100 px-2.5 py-0.5 rounded-full text-slate-600 font-bold">
-                  {teachers.length} registered
-                </span>
-              </h4>
+          {/* ATTENDANCE RECORDS TABLE */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+              <h2 className="font-bold text-slate-800 text-sm">
+                Attendance Records Log ({filteredRecords.length} entries for {selectedMonth})
+              </h2>
+              <span className="text-xs text-slate-500 font-medium">Click "Edit" on any row to update time or status</span>
+            </div>
 
-              {loading ? (
-                <div className="text-center py-12 text-slate-400 text-xs gap-2 flex flex-col items-center">
-                  <div className="w-5 h-5 rounded-full border-2 border-slate-300 border-t-blue-500 animate-spin" />
-                  Fetching roster...
-                </div>
-              ) : teachers.length === 0 ? (
-                <div className="text-center py-12 border border-dashed border-slate-200 rounded-xl text-slate-400 text-xs">
-                  No teachers registered in the attendance database.
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                        <th className="p-3">Name</th>
-                        <th className="p-3">Subject</th>
-                        <th className="p-3 text-center">PIN</th>
-                        <th className="p-3 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {teachers.map((t) => (
-                        <tr key={t.id} className="border-b border-slate-100 hover:bg-slate-50/30">
-                          <td className="p-3 font-semibold text-slate-800">{t.name}</td>
-                          <td className="p-3 text-slate-500">{t.subject || '—'}</td>
-                          <td className="p-3 text-center font-mono font-bold text-slate-600 tracking-widest">
-                            {sessionPins[t.id] || t.pin || '••••'}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-700">
+                <thead className="bg-slate-50 text-slate-500 uppercase font-bold border-b border-slate-200">
+                  <tr>
+                    <th className="px-6 py-3.5">Date</th>
+                    <th className="px-6 py-3.5">Teacher Name</th>
+                    <th className="px-6 py-3.5">Check In</th>
+                    <th className="px-6 py-3.5">Check Out</th>
+                    <th className="px-6 py-3.5">Status</th>
+                    <th className="px-6 py-3.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredRecords.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-medium">
+                        No attendance records found for the selected month/filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredRecords.map((rec) => {
+                      const tName = rec.teacherName || teachers.find((t) => t.id === rec.teacherId)?.name || rec.teacherId;
+                      return (
+                        <tr key={rec.id} className="hover:bg-slate-50/80 transition-all">
+                          <td className="px-6 py-4 font-semibold text-slate-800">{rec.date}</td>
+                          <td className="px-6 py-4 font-bold text-slate-900">{tName}</td>
+                          <td className="px-6 py-4 font-mono font-medium text-slate-700">
+                            {rec.checkIn || <span className="text-slate-300">--:--</span>}
                           </td>
-                          <td className="p-3 text-right">
-                            <button
-                              onClick={() => handleRemoveTeacher(t.id, t.name)}
-                              className="p-1 px-2.5 bg-red-50 text-[10px] font-bold text-red-600 rounded-lg hover:bg-red-100 transition-colors cursor-pointer inline-flex items-center gap-0.5"
+                          <td className="px-6 py-4 font-mono font-medium text-slate-700">
+                            {rec.checkOut || <span className="text-slate-300">--:--</span>}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span
+                              className={`px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider ${
+                                rec.status === 'Late'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : rec.status === 'On Time'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-slate-100 text-slate-600'
+                              }`}
                             >
-                              <Trash2 size={10} /> Remove
+                              {rec.status || 'Present'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right space-x-2">
+                            <button
+                              onClick={() => openEditRecord(rec)}
+                              className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg transition-all inline-flex items-center space-x-1 cursor-pointer"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              <span>Edit Row</span>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteRecord(rec.id)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-all cursor-pointer inline-block"
+                              title="Delete row"
+                            >
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           </td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <p className="text-[10px] text-slate-400 leading-normal p-3 bg-slate-50 rounded-xl border border-slate-100 mt-4 italic">
-                    Note: To maximize system security, PINs are only shown right after adding a teacher. Once you leave this page or refresh, they will be masked.
-                  </p>
-                </div>
-              )}
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
-
-            {/* QR Kiosk Generator */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
-              <h4 className="serif-title font-semibold text-base text-slate-800 border-b pb-2 mb-3 flex items-center gap-1.5">
-                <QrCode size={16} className="text-blue-500" /> Kiosk Access QR Code
-              </h4>
-              <p className="text-xs text-slate-500 mb-5 leading-relaxed">
-                There is only **one** QR code for everyone. Print and post this code on the wall. When teachers scan it, the clock-in kiosk app will load on their mobile phones automatically.
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Deployment URL address</label>
-                    <input
-                      type="text"
-                      className="w-full px-3 py-1.5 border border-slate-300 rounded focus:border-blue-500 bg-white focus:outline-none text-xs font-mono text-slate-600"
-                      value={baseUrl}
-                      onChange={(e) => setBaseUrl(e.target.value)}
-                    />
-                  </div>
-                  <button
-                    onClick={() => window.print()}
-                    className="w-full py-2 bg-slate-800 hover:bg-slate-900 text-white font-semibold rounded text-xs cursor-pointer flex justify-center items-center gap-1"
-                  >
-                    <Printer size={13} /> Print Kiosk Flyer
-                  </button>
-                </div>
-
-                <div className="flex flex-col items-center bg-slate-50 p-4 border border-slate-200 rounded-2xl shadow-2xs">
-                  <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-3xs">
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(baseUrl)}`}
-                      alt="Clock In Kiosk QR"
-                      referrerPolicy="no-referrer"
-                      className="w-[140px] h-[140px]"
-                    />
-                  </div>
-                  <div className="text-center mt-3">
-                    <span className="text-xs font-bold text-slate-700">Scan to Check In/Out</span>
-                    <p className="text-[10px] text-slate-400 mt-0.5">Static shared code for all staff</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
           </div>
         </div>
-      ) : activeSubTab === 'shifts' ? (
-        /* Settings Sub-Tab: Custom Arrival Times per Teacher */
-        <div className="space-y-6 max-w-4xl">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-              <div>
-                <h3 className="serif-title font-bold text-lg text-slate-800 flex items-center gap-2">
-                  <Clock className="text-blue-600" size={20} /> Teacher Expected Arrival Times &amp; Shifts
-                </h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Configure custom shift start times for each teacher. Check-ins after their target time will be counted as late arrivals.
-                </p>
-              </div>
+      )}
 
-              <button
-                onClick={async () => {
-                  await handleSaveSettings(securitySettings);
-                  setSaveArrivalSuccess(true);
-                  setTimeout(() => setSaveArrivalSuccess(false), 3000);
-                }}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl flex items-center gap-2 shadow-xs cursor-pointer transition-colors shrink-0"
-              >
-                {saveArrivalSuccess ? <Check size={14} /> : <Save size={14} />}
-                {saveArrivalSuccess ? 'Saved!' : 'Save Arrival Times'}
-              </button>
+      {/* TAB 2: TEACHERS & PINS MANAGEMENT */}
+      {activeSubTab === 'teachers' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 md:p-8 space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-100 pb-4 gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-slate-800 flex items-center space-x-2">
+                <KeyRound className="w-5 h-5 text-indigo-600" />
+                <span>Teacher Profiles & Security PIN Directory</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">Set custom 4-digit PINs and expected arrival times for each teacher.</p>
             </div>
 
-            {saveArrivalSuccess && (
-              <div className="p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-xs font-semibold flex items-center gap-2">
-                <CheckCircle2 size={16} /> Arrival time settings updated and saved successfully!
-              </div>
-            )}
+            <button
+              onClick={() => {
+                setEditingTeacher(null);
+                setTName('');
+                setTSubject('');
+                setTPin('1234');
+                setTExpectedTime('08:00');
+              }}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-all shadow-xs flex items-center space-x-1.5 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add New Teacher</span>
+            </button>
+          </div>
 
-            {/* Default arrival time */}
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          {/* Add / Edit Form */}
+          <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-4">
+            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+              {editingTeacher ? `Edit Teacher Profile (${editingTeacher.name})` : 'Add New Teacher Profile'}
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
-                <label className="text-xs font-bold text-slate-800 uppercase tracking-wider block">Default Target Arrival Time</label>
-                <span className="text-[11px] text-slate-500">Fallback arrival time for all teachers unless a custom time is set below.</span>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Full Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Dr. Sarah Ahmed"
+                  value={tName}
+                  onChange={(e) => setTName(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
               </div>
-              <div className="flex items-center gap-2">
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Subject / Department</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Mathematics"
+                  value={tSubject}
+                  onChange={(e) => setTSubject(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">4-Digit Security PIN</label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  placeholder="1234"
+                  value={tPin}
+                  onChange={(e) => setTPin(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold tracking-widest text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Expected Check-In Time</label>
                 <input
                   type="time"
-                  className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-800 bg-white focus:outline-none focus:border-blue-500"
-                  value={securitySettings.defaultArrivalTime || '09:00'}
-                  onChange={(e) => {
-                    setSecuritySettings((prev) => ({
-                      ...prev,
-                      defaultArrivalTime: e.target.value,
-                    }));
-                  }}
+                  value={tExpectedTime}
+                  onChange={(e) => setTExpectedTime(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
-                <span className="text-xs font-semibold text-slate-500">({formatTimeToAMPM(securitySettings.defaultArrivalTime || '09:00')})</span>
               </div>
             </div>
 
-            {/* Teacher Specific list */}
-            <div className="space-y-3">
-              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Per-Teacher Custom Arrival Times</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {teachers.map((t) => {
-                  const currentCustom = securitySettings.teacherArrivalTimes?.[t.id] || securitySettings.teacherArrivalTimes?.[t.name] || securitySettings.defaultArrivalTime || '09:00';
-                  return (
-                    <div key={t.id} className="p-4 bg-white border border-slate-200 rounded-xl flex flex-col gap-3 shadow-2xs hover:border-slate-300 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 font-bold text-xs flex items-center justify-center border border-blue-100">
-                            {t.name.slice(0, 2).toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="font-semibold text-sm text-slate-800">{t.name}</div>
-                            <div className="text-[10px] text-slate-400">{t.subject || 'General'}</div>
-                          </div>
-                        </div>
-                        <span className="text-xs font-mono font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-100">
-                          Target: {formatTimeToAMPM(currentCustom)}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="time"
-                          className="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-mono font-bold text-slate-800 bg-white focus:outline-none focus:border-blue-500"
-                          value={currentCustom}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setSecuritySettings((prev) => ({
-                              ...prev,
-                              teacherArrivalTimes: {
-                                ...(prev.teacherArrivalTimes || {}),
-                                [t.id]: val,
-                                [t.name]: val,
-                              },
-                            }));
-                          }}
-                        />
-
-                        {/* Presets */}
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSecuritySettings((prev) => ({
-                                ...prev,
-                                teacherArrivalTimes: {
-                                  ...(prev.teacherArrivalTimes || {}),
-                                  [t.id]: '09:00',
-                                  [t.name]: '09:00',
-                                },
-                              }));
-                            }}
-                            className="px-2 py-1 text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 rounded text-slate-700 cursor-pointer"
-                          >
-                            9 AM
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSecuritySettings((prev) => ({
-                                ...prev,
-                                teacherArrivalTimes: {
-                                  ...(prev.teacherArrivalTimes || {}),
-                                  [t.id]: '14:00',
-                                  [t.name]: '14:00',
-                                },
-                              }));
-                            }}
-                            className="px-2 py-1 text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 rounded text-slate-700 cursor-pointer"
-                          >
-                            2 PM
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSecuritySettings((prev) => ({
-                                ...prev,
-                                teacherArrivalTimes: {
-                                  ...(prev.teacherArrivalTimes || {}),
-                                  [t.id]: '17:00',
-                                  [t.name]: '17:00',
-                                },
-                              }));
-                            }}
-                            className="px-2 py-1 text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 rounded text-slate-700 cursor-pointer"
-                          >
-                            5 PM
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-slate-100 flex justify-end">
+            <div className="flex justify-end space-x-2 pt-2">
+              {editingTeacher && (
+                <button
+                  onClick={() => setEditingTeacher(null)}
+                  className="px-4 py-2 bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+              )}
               <button
-                onClick={async () => {
-                  await handleSaveSettings(securitySettings);
-                  setSaveArrivalSuccess(true);
-                  setTimeout(() => setSaveArrivalSuccess(false), 3000);
-                }}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl flex items-center gap-2 shadow-xs cursor-pointer transition-colors"
+                onClick={handleSaveTeacher}
+                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer flex items-center space-x-1.5"
               >
-                {saveArrivalSuccess ? <Check size={14} /> : <Save size={14} />}
-                {saveArrivalSuccess ? 'Settings Saved' : 'Save Arrival Times'}
+                <Save className="w-3.5 h-3.5" />
+                <span>Save Teacher</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Teacher List Table */}
+          <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+            <table className="w-full text-left text-xs text-slate-700">
+              <thead className="bg-slate-50 text-slate-500 uppercase font-bold border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-3.5">Teacher Name</th>
+                  <th className="px-6 py-3.5">Subject</th>
+                  <th className="px-6 py-3.5">Security PIN</th>
+                  <th className="px-6 py-3.5">Target Time</th>
+                  <th className="px-6 py-3.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {teachers.map((t) => (
+                  <tr key={t.id} className="hover:bg-slate-50/80">
+                    <td className="px-6 py-4 font-bold text-slate-900">{t.name}</td>
+                    <td className="px-6 py-4 font-medium text-slate-600">{t.subject || 'N/A'}</td>
+                    <td className="px-6 py-4 font-mono font-bold text-indigo-700 bg-indigo-50/50 inline-block my-2 px-2.5 py-1 rounded-md">
+                      {t.pin || '1234'}
+                    </td>
+                    <td className="px-6 py-4 font-semibold text-slate-800">{t.expectedTime || '08:00 AM'}</td>
+                    <td className="px-6 py-4 text-right space-x-2">
+                      <button
+                        onClick={() => {
+                          setEditingTeacher(t);
+                          setTName(t.name);
+                          setTSubject(t.subject || '');
+                          setTPin(t.pin || '1234');
+                          setTExpectedTime(t.expectedTime || '08:00');
+                        }}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg cursor-pointer inline-flex items-center space-x-1"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Edit PIN</span>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteTeacherProfile(t.id)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: GPS LOCATION CONFIG */}
+      {activeSubTab === 'location' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 md:p-8 space-y-6 max-w-3xl">
+          <div className="border-b border-slate-100 pb-4">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center space-x-2">
+              <MapPin className="w-5 h-5 text-rose-600" />
+              <span>Institute Location & 50-Meter Geofence Configuration</span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Attendance check-in/out is restricted to within 50 meters of these GPS coordinates.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Latitude</label>
+                <input
+                  type="number"
+                  step="0.000001"
+                  value={locLat}
+                  onChange={(e) => setLocLat(parseFloat(e.target.value))}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Longitude</label>
+                <input
+                  type="number"
+                  step="0.000001"
+                  value={locLng}
+                  onChange={(e) => setLocLng(parseFloat(e.target.value))}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Geofence Radius (Meters)
+              </label>
+              <input
+                type="number"
+                value={locRadius}
+                onChange={(e) => setLocRadius(parseInt(e.target.value, 10))}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500"
+              />
+              <p className="text-[11px] text-slate-400 mt-1">Default rule is 50 meters.</p>
+            </div>
+
+            <div className="pt-2 flex flex-col sm:flex-row items-center gap-3">
+              <button
+                onClick={handleDetectCurrentLocation}
+                className="w-full sm:w-auto px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-1.5"
+              >
+                <MapPin className="w-4 h-4 text-rose-600" />
+                <span>Set to My Current GPS Location</span>
+              </button>
+
+              <button
+                onClick={handleSaveLocation}
+                className="w-full sm:w-auto px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center space-x-1.5"
+              >
+                <Save className="w-4 h-4" />
+                <span>Save Geofence Location</span>
               </button>
             </div>
           </div>
         </div>
-      ) : (
-        // Reports View with pencil editing tools
-        <div className="space-y-6">
-          {/* Controls Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-slate-100 rounded-xl border border-slate-200 no-print print:hidden">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-bold text-slate-600 uppercase">Teacher:</label>
+      )}
+
+      {/* EDIT ROW MODAL */}
+      {editingRecord && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-slate-800 text-base">Edit Attendance Row</h3>
+              <button onClick={() => setEditingRecord(null)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-600 mb-1">Teacher</label>
+                <input
+                  type="text"
+                  disabled
+                  value={editingRecord.teacherName || editingRecord.teacherId}
+                  className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl font-bold text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-600 mb-1">Date</label>
+                <input
+                  type="date"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">Check In Time</label>
+                  <input
+                    type="text"
+                    placeholder="08:00 AM"
+                    value={editCheckIn}
+                    onChange={(e) => setEditCheckIn(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-slate-800 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">Check Out Time</label>
+                  <input
+                    type="text"
+                    placeholder="04:00 PM"
+                    value={editCheckOut}
+                    onChange={(e) => setEditCheckOut(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-slate-800 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-600 mb-1">Status</label>
                 <select
-                  className="px-3 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-none focus:border-blue-500 text-xs font-semibold"
-                  value={reportTeacherId}
-                  onChange={(e) => setReportTeacherId(e.target.value)}
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value as any)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-none"
                 >
-                  <option value="all">All Teachers</option>
+                  <option value="On Time">On Time</option>
+                  <option value="Late">Late</option>
+                  <option value="Absent">Absent</option>
+                  <option value="Working">Working</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setEditingRecord(null)}
+                className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl cursor-pointer text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveEditRecord}
+                className="px-5 py-2 bg-blue-600 text-white font-bold rounded-xl shadow-xs cursor-pointer text-xs flex items-center space-x-1"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Save Changes</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADD RECORD MODAL */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-slate-800 text-base">Add Manual Attendance Row</h3>
+              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-600 mb-1">Teacher Name</label>
+                <select
+                  value={newRecTeacherId}
+                  onChange={(e) => setNewRecTeacherId(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-none"
+                >
+                  <option value="">-- Choose Teacher --</option>
                   {teachers.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name}
@@ -971,366 +968,57 @@ export default function ManageAttendanceView() {
                 </select>
               </div>
 
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-bold text-slate-600 uppercase">Month:</label>
-                <select
-                  className="px-3 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-none focus:border-blue-500 text-xs font-semibold"
-                  value={reportMonth}
-                  onChange={(e) => setReportMonth(Number(e.target.value))}
-                >
-                  {MONTH_NAMES.map((m, idx) => (
-                    <option key={m} value={idx}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-bold text-slate-600 uppercase">Year:</label>
-                <select
-                  className="px-3 py-1.5 border border-slate-300 rounded-lg bg-white focus:outline-none focus:border-blue-500 text-xs font-semibold"
-                  value={reportYear}
-                  onChange={(e) => setReportYear(Number(e.target.value))}
-                >
-                  {[2025, 2026, 2027].map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <button
-              onClick={() => window.print()}
-              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
-            >
-              <Printer size={13} /> Print Report
-            </button>
-          </div>
-
-          {reportLoading ? (
-            <div className="flex flex-col items-center justify-center py-12 text-slate-400 text-xs gap-2">
-              <div className="w-6 h-6 rounded-full border-2 border-slate-300 border-t-blue-500 animate-spin" />
-              Loading database records...
-            </div>
-          ) : reportError ? (
-            <div className="p-4 text-center text-xs text-red-500 bg-red-50/50 rounded-xl border border-red-100">
-              <AlertTriangle size={24} className="mb-2 text-red-400 mx-auto" />
-              {reportError}
-            </div>
-          ) : (
-            // Full interactive grouped reports
-            <div className="space-y-8">
-              {teachers
-                .filter((t) => reportTeacherId === 'all' || t.id === reportTeacherId)
-                .map((teacher) => {
-                  const tRecs = reportRecords.filter(
-                    (r) => r.teacherId === teacher.id || r.teacherId === teacher.name
-                  );
-
-                  // Calculate stats including On Time & Late counts
-                  const daysInMonth = new Date(reportYear, reportMonth + 1, 0).getDate();
-                  const today = new Date();
-                  today.setHours(0, 0, 0, 0);
-
-                  let totalMins = 0;
-                  let presentCount = 0;
-                  let absentCount = 0;
-                  let onTimeCount = 0;
-                  let lateCount = 0;
-
-                  const expectedTimeStr = getTeacherExpectedTime(teacher.id);
-
-                  for (let d = 1; d <= daysInMonth; d++) {
-                    const dateStr = `${reportYear}-${String(reportMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                    const targetDate = new Date(dateStr);
-                    const isPast = targetDate <= today;
-                    const dayRecs = tRecs.filter((r) => r.date === dateStr);
-
-                    if (dayRecs.length > 0) {
-                      presentCount++;
-                      dayRecs.forEach((r) => {
-                        if (r.checkIn) {
-                          const punct = checkArrivalPunctuality(r.checkIn, expectedTimeStr);
-                          if (punct.isLate) {
-                            lateCount++;
-                          } else {
-                            onTimeCount++;
-                          }
-                        }
-                        if (r.checkIn && r.checkOut) {
-                          totalMins += calculateMins(r.checkIn, r.checkOut);
-                        }
-                      });
-                    } else if (isPast) {
-                      absentCount++;
-                    }
-                  }
-
-                  return (
-                    <div key={teacher.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
-                      {/* Header */}
-                      <div className="p-5 border-b border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-                        <div>
-                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Attendance sheet</div>
-                          <h4 className="serif-title font-bold text-base text-slate-800 flex items-center gap-2 mt-0.5">
-                            <User size={16} className="text-blue-500" /> {teacher.name}
-                            <span className="text-xs font-normal text-slate-500">({teacher.subject || 'No subject'})</span>
-                            <span className="text-xs font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100">
-                              Target Arrival: {formatTimeToAMPM(expectedTimeStr)}
-                            </span>
-                          </h4>
-                        </div>
-                        <span className="text-xs font-semibold text-slate-500 bg-white border border-slate-200 px-3 py-1 rounded-lg">
-                          {MONTH_NAMES[reportMonth]} {reportYear}
-                        </span>
-                      </div>
-
-                      {/* Summary blocks */}
-                      <div className="grid grid-cols-2 md:grid-cols-5 border-b border-slate-100">
-                        <div className="p-4 border-r border-slate-100 text-center">
-                          <div className="text-2xl font-black font-mono text-green-600 flex items-center justify-center gap-1">
-                            <CheckCircle2 size={18} className="text-green-500" />
-                            {onTimeCount}
-                          </div>
-                          <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">On-Time Arrivals</div>
-                        </div>
-                        <div className="p-4 border-r border-slate-100 text-center">
-                          <div className="text-2xl font-black font-mono text-amber-600 flex items-center justify-center gap-1">
-                            <AlertCircle size={18} className="text-amber-500" />
-                            {lateCount}
-                          </div>
-                          <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">Late Arrivals</div>
-                        </div>
-                        <div className="p-4 border-r border-slate-100 text-center">
-                          <div className="text-2xl font-black font-mono text-slate-700">{presentCount}</div>
-                          <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">Days Present</div>
-                        </div>
-                        <div className="p-4 border-r border-slate-100 text-center">
-                          <div className="text-2xl font-black font-mono text-red-500">{absentCount}</div>
-                          <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">Days Absent</div>
-                        </div>
-                        <div className="p-4 text-center col-span-2 md:col-span-1 border-t md:border-t-0 border-slate-100">
-                          <div className="text-2xl font-black font-mono text-blue-600">{formatMins(totalMins)}</div>
-                          <div className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-wider">Hours Worked</div>
-                        </div>
-                      </div>
-
-                      {/* Detail Table */}
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs border-collapse">
-                          <thead>
-                            <tr className="bg-slate-50/50 border-b border-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                              <th className="p-3 pl-5">Date</th>
-                              <th className="p-3">Weekday</th>
-                              <th className="p-3">Target Arrival</th>
-                              <th className="p-3">Check-In</th>
-                              <th className="p-3">Check-Out</th>
-                              <th className="p-3">Total Hours</th>
-                              <th className="p-3">Arrival Status</th>
-                              <th className="p-3 pr-5 text-right">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {Array.from({ length: daysInMonth }).map((_, dIdx) => {
-                              const dNum = dIdx + 1;
-                              const dateStr = `${reportYear}-${String(reportMonth + 1).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
-                              const dateObj = new Date(dateStr);
-                              const dayName = dateObj.toLocaleDateString(undefined, { weekday: 'short' });
-                              const dayRecs = tRecs.filter((r) => r.date === dateStr);
-                              const isPast = dateObj <= today;
-
-                              if (dayRecs.length > 0) {
-                                return dayRecs.map((r, subIdx) => {
-                                  const hoursVal = r.checkIn && r.checkOut ? formatMins(calculateMins(r.checkIn, r.checkOut)) : '—';
-                                  const punct = checkArrivalPunctuality(r.checkIn, expectedTimeStr);
-                                  return (
-                                    <tr key={`${r.id}-${subIdx}`} className="border-b border-slate-100 hover:bg-slate-50/50">
-                                      <td className="p-3 pl-5 font-mono text-slate-700 font-semibold">{String(dNum).padStart(2, '0')}</td>
-                                      <td className="p-3 text-slate-500">{dayName}</td>
-                                      <td className="p-3 text-slate-500 font-mono text-[11px]">{formatTimeToAMPM(expectedTimeStr)}</td>
-                                      <td className="p-3 text-slate-800 font-medium">{r.checkIn ? formatTimeToAMPM(r.checkIn) : '—'}</td>
-                                      <td className="p-3 text-slate-800 font-medium">{r.checkOut ? formatTimeToAMPM(r.checkOut) : '—'}</td>
-                                      <td className="p-3 font-mono text-slate-600 font-medium">{hoursVal}</td>
-                                      <td className="p-3">
-                                        {punct.isLate ? (
-                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800" title={`Target: ${formatTimeToAMPM(expectedTimeStr)}, Arrived: ${formatTimeToAMPM(r.checkIn)}`}>
-                                            <AlertCircle size={10} /> Late ({punct.lateMins}m)
-                                          </span>
-                                        ) : (
-                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700">
-                                            <CheckCircle2 size={10} /> On Time
-                                          </span>
-                                        )}
-                                      </td>
-                                      <td className="p-3 pr-5 text-right">
-                                        <button
-                                          onClick={() => handleOpenCreateOrEdit(teacher.id, dateStr, r, expectedTimeStr)}
-                                          className="px-2 py-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-blue-200 rounded transition-all cursor-pointer inline-flex items-center gap-1 shadow-2xs"
-                                          title="Edit check-in or check-out times"
-                                        >
-                                          <Pencil size={12} /> Edit
-                                        </button>
-                                      </td>
-                                    </tr>
-                                  );
-                                });
-                              } else {
-                                return (
-                                  <tr key={dateStr} className={`border-b border-slate-100 hover:bg-slate-50/80 ${isPast ? 'opacity-80' : 'opacity-40'}`}>
-                                    <td className="p-3 pl-5 font-mono text-slate-500">{String(dNum).padStart(2, '0')}</td>
-                                    <td className="p-3 text-slate-400">{dayName}</td>
-                                    <td className="p-3 text-slate-400 font-mono text-[11px]">{formatTimeToAMPM(expectedTimeStr)}</td>
-                                    <td className="p-3 text-slate-400 italic">—</td>
-                                    <td className="p-3 text-slate-400 italic">—</td>
-                                    <td className="p-3 font-mono text-slate-400">—</td>
-                                    <td className="p-3">
-                                      {isPast ? (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-600">
-                                          Absent
-                                        </span>
-                                      ) : (
-                                        <span className="text-slate-300 text-[11px]">—</span>
-                                      )}
-                                    </td>
-                                    <td className="p-3 pr-5 text-right">
-                                      <button
-                                        onClick={() => handleOpenCreateOrEdit(teacher.id, dateStr, undefined, expectedTimeStr)}
-                                        className="px-2 py-1 text-[11px] font-semibold text-slate-600 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 hover:border-blue-200 rounded transition-all cursor-pointer inline-flex items-center gap-1 shadow-2xs"
-                                        title="Log or edit attendance for this absent day"
-                                      >
-                                        <Pencil size={12} /> Edit
-                                      </button>
-                                    </td>
-                                  </tr>
-                                );
-                              }
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Edit Record Overlay Modal */}
-      {editingRecord && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 w-full max-w-sm shadow-xl space-y-4">
-            <div className="flex justify-between items-center border-b pb-3">
               <div>
-                <h3 className="serif-title font-bold text-slate-800 text-base">Edit Attendance Record</h3>
-                <p className="text-[11px] text-slate-500 mt-0.5 font-medium">Date: <span className="font-mono font-bold text-slate-700">{editingRecord.date}</span></p>
-              </div>
-              <button
-                onClick={() => setEditingRecord(null)}
-                className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 cursor-pointer"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <div className="p-2.5 bg-blue-50/60 border border-blue-100 rounded-xl flex items-center justify-between text-xs">
-                <span className="text-slate-600 font-medium">Target Arrival:</span>
-                <span className="font-mono font-bold text-blue-700">{formatTimeToAMPM(getTeacherExpectedTime(editingRecord.teacherId))}</span>
+                <label className="block font-bold text-slate-600 mb-1">Date</label>
+                <input
+                  type="date"
+                  value={newRecDate}
+                  onChange={(e) => setNewRecDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-none"
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Check-In</label>
+                  <label className="block font-bold text-slate-600 mb-1">Check In Time</label>
                   <input
-                    type="time"
-                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500 bg-white"
-                    value={editCheckIn}
-                    onChange={(e) => setEditCheckIn(e.target.value)}
+                    type="text"
+                    value={newRecCheckIn}
+                    onChange={(e) => setNewRecCheckIn(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-slate-800 focus:outline-none"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Check-Out</label>
+                  <label className="block font-bold text-slate-600 mb-1">Check Out Time</label>
                   <input
-                    type="time"
-                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold focus:outline-none focus:border-blue-500 bg-white"
-                    value={editCheckOut}
-                    onChange={(e) => setEditCheckOut(e.target.value)}
+                    type="text"
+                    value={newRecCheckOut}
+                    onChange={(e) => setNewRecCheckOut(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-slate-800 focus:outline-none"
                   />
                 </div>
               </div>
-
-              {editCheckIn && (
-                <div className="flex items-center justify-between text-xs pt-1">
-                  <span className="text-slate-500 font-medium">Status Preview:</span>
-                  {(() => {
-                    const expected = getTeacherExpectedTime(editingRecord.teacherId);
-                    const punct = checkArrivalPunctuality(editCheckIn, expected);
-                    return punct.isLate ? (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 flex items-center gap-1">
-                        <AlertCircle size={10} /> Late ({punct.lateMins}m)
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700 flex items-center gap-1">
-                        <CheckCircle2 size={10} /> On Time
-                      </span>
-                    );
-                  })()}
-                </div>
-              )}
             </div>
 
-            {editError && (
-              <div className="p-2.5 bg-red-50 text-red-600 text-xs font-semibold rounded-lg border border-red-100 flex items-center gap-1">
-                <AlertTriangle size={14} /> {editError}
-              </div>
-            )}
-
-            <div className="flex justify-between items-center pt-2 gap-2">
+            <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
               <button
-                onClick={handleDeleteRecord}
-                disabled={editLoading}
-                className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1 border border-red-200"
-                title="Mark teacher absent or delete record"
+                onClick={() => setIsAddModalOpen(false)}
+                className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl cursor-pointer text-xs"
               >
-                <Trash2 size={12} /> Clear / Absent
+                Cancel
               </button>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setEditingRecord(null)}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveEdit}
-                  disabled={editLoading}
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer flex items-center gap-0.5 disabled:opacity-50"
-                >
-                  {editLoading ? (
-                    <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-white animate-spin" />
-                  ) : (
-                    <>
-                      <Check size={12} /> Save
-                    </>
-                  )}
-                </button>
-              </div>
+              <button
+                onClick={handleAddRecord}
+                className="px-5 py-2 bg-emerald-600 text-white font-bold rounded-xl shadow-xs cursor-pointer text-xs flex items-center space-x-1"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Record</span>
+              </button>
             </div>
           </div>
         </div>
       )}
-      {/* Memory Maintenance & Pruning Modal */}
-      <PruneDataModal
-        isOpen={showPruneModal}
-        onClose={() => setShowPruneModal(false)}
-        onDataPruned={() => {
-          loadInitialData();
-        }}
-      />
     </div>
   );
 }
